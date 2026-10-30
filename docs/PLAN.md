@@ -14,13 +14,12 @@ Source of truth for rules and the API contract: [`CLAUDE.md`](../CLAUDE.md). Spe
 ```
 backend/
 ├── requirements.txt
-├── render.yaml                  # (M1) Render blueprint, lives at repo root if Render needs it there
 ├── pytest.ini
 ├── api/
 │   ├── __init__.py
 │   ├── main.py                  # FastAPI app, CORS (ALLOWED_ORIGIN), router includes
 │   ├── schemas.py               # ALL Pydantic models in section 2 (single source for the contract)
-│   ├── routes_health.py         # GET /health, GET /probe (M1, /probe removed or kept as debug in M11)
+│   ├── routes_health.py         # GET /health (feeds + newest-page check + LLM ping, cached 5 min)
 │   ├── routes_notices.py        # GET /notices
 │   ├── routes_analyze.py        # GET /analyze (SSE)
 │   ├── routes_media.py          # GET /tts, GET /ics
@@ -65,7 +64,7 @@ backend/
 │   ├── labels/                  # hand-labelled expectations per circular URL (labels, not source text)
 │   └── run.py                   # fetches each URL live, runs pipeline, writes eval/results.json
 ├── scripts/
-│   ├── probe_sources.py         # M1: prints feed counts + first item per source
+│   ├── probe.py                 # M1: feeds ok/count/newest/first 3 titles + newest RBI & SEBI page fetch
 │   └── groq_smoke.py            # M1: one Telugu completion, prints model + latency
 └── tests/
     ├── test_allowlist.py
@@ -135,7 +134,7 @@ ObligationStatus = Literal["verified", "near", "rejected", "fixed"]
 StepStatus = Literal["running", "done", "failed"]
 
 # ---------- /health ----------
-class SourceHealth(BaseModel):
+class SourceHealth(BaseModel):  # ok = feed has items AND newest item's page fetched
     ok: bool
     last_fetch: Optional[datetime] = None
     count: int = 0
@@ -144,6 +143,7 @@ class SourceHealth(BaseModel):
 class LLMHealth(BaseModel):
     ok: bool
     model: Optional[str] = None            # value of GROQ_MODEL_PRIMARY
+    error: Optional[str] = None
 
 class HealthResponse(BaseModel):
     sources: dict[SourceId, SourceHealth]
@@ -273,7 +273,7 @@ export type ObligationStatus = "verified" | "near" | "rejected" | "fixed";
 export type StepStatus = "running" | "done" | "failed";
 
 export interface SourceHealth { ok: boolean; last_fetch: string | null; count: number; error?: string | null }
-export interface HealthResponse { sources: Record<SourceId, SourceHealth>; llm: { ok: boolean; model: string | null } }
+export interface HealthResponse { sources: Record<SourceId, SourceHealth>; llm: { ok: boolean; model: string | null; error?: string | null } }
 
 export interface Notice {
   id: string; source: SourceId; title: string; url: string;
@@ -312,13 +312,13 @@ export interface EvalResponse {
 
 ## 3. Milestones
 
-Every **DONE WHEN** runs against real, live data. "LIVE_RBI_URL" / "LIVE_SEBI_URL" means *the first item taken from the live feed at test time* (e.g. `python scripts/probe_sources.py --first rbi`), never a pasted constant.
+Every **DONE WHEN** runs against real, live data. "LIVE_RBI_URL" / "LIVE_SEBI_URL" means *the first item taken from the live feed at test time* (e.g. `python scripts/probe.py`), never a pasted constant.
 
 ### Backend (Akshay)
 
 | # | Milestone | Files | DONE WHEN |
 |---|---|---|---|
-| **M1** | **Live data probe + deploy.** Fetch RBI, SEBI, PIB feeds; find English PIB variant; fetch first RBI and first SEBI circular page from the feed (note whether SEBI body is HTML or embedded PDF). Bare FastAPI with `/health` and `/probe`. `render.yaml`. Deploy to Render. One Groq call returning Telugu. | `requirements.txt`, `api/main.py`, `api/routes_health.py`, `sources/http.py`, `scripts/probe_sources.py`, `scripts/groq_smoke.py`, `render.yaml` | `curl $RENDER_URL/probe` shows count > 0 for all 3 feeds **and** HTTP 200 + body length for one RBI and one SEBI circular **fetched from Render**. `python scripts/groq_smoke.py` prints Telugu text + model + ms. Record findings (PIB English URL, SEBI body type) in CLAUDE.md. |
+| **M1** | **Live data probe + deploy.** Fetch RBI, SEBI, PIB feeds; find English PIB variant; fetch first RBI and first SEBI circular page from the feed (note whether SEBI body is HTML or embedded PDF). Bare FastAPI with `/health` (the probe checks are folded into it; no `/probe` route). `render.yaml` at repo root. Deploy to Render. One Groq call returning Telugu. | `requirements.txt`, `api/main.py`, `api/routes_health.py`, `sources/http.py`, `sources/feeds.py`, `scripts/probe.py`, `scripts/groq_smoke.py`, `render.yaml` | `curl $RENDER_URL/health` shows all 3 sources `ok` (count > 0 and newest page fetched) **from Render**; `python scripts/probe.py` prints body length + PDF link for the newest RBI and SEBI items. `python scripts/groq_smoke.py` prints Telugu + Hindi text, model, ms, tokens. |
 | **M2** | `fetch_document`: HTML → numbered paragraphs, PDF fallback (pdfplumber), domain allow-list, 30-min cache. | `sources/document.py`, `sources/allowlist.py`, `sources/cache.py`, `tests/test_allowlist.py`, `tests/test_document_parse.py` | `pytest -q` green; `pytest -m live -k document` fetches LIVE_RBI_URL and LIVE_SEBI_URL and each returns ≥ 3 paragraphs; a non-gov URL raises a typed refusal. |
 | **M3** | `llm/client.py`: Groq SDK, JSON/structured output, Pydantic validation, retry-once-with-error, 429/5xx backoff → `GROQ_MODEL_FAST`, usage log. | `llm/client.py`, `llm/errors.py`, `llm/usage_log.py`, `tests/test_llm_client.py` | Unit tests cover invalid-JSON retry, 429 → fallback, typed error (via fake transport, no canned circulars). Live: one `call_json` returns a validated object and the usage log has model/tokens/ms. |
 | **M4** | Extraction. Prompt `llm/prompts/extract.md` — **RULES section left for Akshay to write**; code wires prompt loading, chunking, merge + dedupe, `informational` flag. Document text is wrapped as data (prompt-injection guard). | `pipeline/extract.py`, `pipeline/chunk.py`, `llm/prompts/extract.md` | `python -m pipeline.extract <LIVE_RBI_URL>` prints ≥ 1 `ExtractedObligation` with non-empty quote, or `informational=true` for a no-duty notice. |
@@ -364,14 +364,14 @@ Suggested timeline (IST): Sat 31 Oct — M1–M5 + F1–F2 in parallel by evenin
 
 | Risk | Detect | Fallback |
 |---|---|---|
-| Gov sites block Render's IPs | M1 `/probe` from Render shows timeouts/403 | Deploy same repo to **Railway** (then Fly.io); frontend `NEXT_PUBLIC_API_URL` switch. Decide in M1, not later. |
+| Gov sites block Render's IPs | M1 `/health` from Render shows source errors (timeout/403) | Deploy same repo to **Railway** (then Fly.io); frontend `NEXT_PUBLIC_API_URL` switch. Decide in M1, not later. |
 | Groq rate limits / quota | 429s in usage log; `/health` llm.ok false | Exponential backoff → `GROQ_MODEL_FAST`; 30-min analysis cache keyed by URL + content hash; chunk only when needed; check limits in console before demo. |
 | Weak Telugu output | M1 smoke test + M8 teammate review | Prompt fixes (short sentences, glossary of fixed terms like RBI/NBFC kept in English, examples of tone); try the other production/preview model; English fallback with a note. |
 | SSE buffered on Render | Steps arrive all at once in M9 deployed test | `X-Accel-Buffering: no`, `Cache-Control: no-cache`, flush a comment line (`: ping`) immediately and every 10 s; no gzip on that route. Last resort: poll a job endpoint. |
 | No te-IN / hi-IN browser voice | `speechSynthesis.getVoices()` has none for the lang | `/tts` gTTS mp3; if that fails, text only with a note. Test on the demo laptop. |
 | Render free-tier cold start (~30–60 s) | First `/health` slow | Frontend shows "waking server…" with retry; hit `/health` 5 min before demo/video. |
 | SEBI body only in embedded PDF | M1 probe | pdfplumber path in M2; follow the iframe/PDF link. |
-| PIB feed English variant unknown / no dates | M1 probe | Try `Lang=` values; show "date not in feed"; fetch date from the page if present. |
+| PIB feed redirects to Hindi / no dates | M1 probe | English = `&reg=3` variant (found in M1); show "date not in feed"; fetch date from the page if present. |
 | Feed empty this week | `/notices` count 0 | Empty state offers paste-a-link; keep 2–3 fresh live links for the demo. |
 
 ---

@@ -16,8 +16,12 @@ Tagline: "New rules, explained in your language, every line proved."
 ## Sources (live)
 - RBI notifications RSS: https://www.rbi.org.in/notifications_rss.xml
 - SEBI RSS: https://www.sebi.gov.in/sebirss.xml  (keep only links containing /legal/circulars/)
-- PIB RSS: https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3  (Lang=1 returned Hindi; find the English variant)
+- PIB RSS (English): https://www.pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3&reg=3
+  Without `&reg=3`, PIB 302-redirects every Lang value to the Hindi feed. Items have no dates.
 - User-pasted links allowed only from rbi.org.in, sebi.gov.in, pib.gov.in
+- Gotchas (probed 31 Oct): RBI feed items carry the full circular HTML in <description>. SEBI circular pages are a
+  thin shell whose body is an iframe to a PDF (`.../web/?file=<pdf url>`), so the PDF fallback is mandatory.
+  SEBI pubDate looks like `30 Oct, 2026` (stray comma) so parse with dateparser.
 
 ## LLM: Groq only
 - Use the official `groq` Python SDK (OpenAI-compatible chat completions).
@@ -28,6 +32,7 @@ Tagline: "New rules, explained in your language, every line proved."
   to GROQ_MODEL_FAST. Never raise raw exceptions to the API layer; return typed errors.
 - Temperature 0 for extraction/verification-related calls.
 - Log provider, model, tokens and latency per call (shown on the Evidence page later).
+- Load `.env` with python-dotenv (backend/config.py). Never print or log the key.
 
 ## Stack
 backend/  Python 3.11, FastAPI, uvicorn, httpx, feedparser, selectolax, pdfplumber, rapidfuzz,
@@ -39,7 +44,8 @@ No database. In-memory TTL cache, 30 min (cachetools). User profile in browser l
 Deploy: backend on Render (Render is connected to Claude Code), frontend on Vercel.
 
 ## API contract
-GET /health                                   -> {sources:{rbi,sebi,pib:{ok,last_fetch,count}}, llm:{ok,model}}
+GET /health                                   -> {sources:{rbi,sebi,pib:{ok,last_fetch,count,error}}, llm:{ok,model,error}}
+                                                 source ok = feed has items AND its newest item's page fetched; cached 5 min
 GET /notices?profile=&lang=                   -> [{id,source,title,url,date,fetched_at,applies:"yes|no|review",reason}]
 GET /analyze?url=&profile=&lang=&verifier_test=0|1
      -> text/event-stream. events: {"type":"step","name","status":"running|done|failed","ms","detail"}
@@ -48,6 +54,8 @@ GET /analyze?url=&profile=&lang=&verifier_test=0|1
                                 status:"verified|near|rejected|fixed",reason,match_span,injected_test}],
                 "counts":{verified,rejected,fixed},"applies":{value,reason,quote},
                 "explainer":{lang,text},"llm":{model,ms}}
+        or, instead of result on failure: {"type":"error","step","message","url"}  (message is user-readable)
+        extraction model (internal) also has optional penalty_or_consequence; not returned by the API
 GET /tts?text=&lang=                          -> audio/mpeg (fallback voice via gTTS)
 GET /ics?url=&profile=                        -> text/calendar of verified deadlines
 Profiles: nbfc, coop_bank, research_analyst, stock_broker, citizen_msme
