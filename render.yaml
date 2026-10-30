@@ -1,0 +1,19 @@
+# Backend only. Secrets are NOT stored here: values are set in the Render dashboard (sync: false).
+services:
+  - type: web
+    name: pramaan-api
+    runtime: python
+    plan: free
+    region: singapore
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn api.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL_PRIMARY
+        sync: false
+      - key: GROQ_MODEL_FAST
+        sync: false
+      - key: ALLOWED_ORIGIN
+        sync: false
