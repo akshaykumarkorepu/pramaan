@@ -329,6 +329,11 @@ Every **DONE WHEN** runs against real, live data. "LIVE_RBI_URL" / "LIVE_SEBI_UR
 | **M9** | `/analyze` SSE: orchestrator yields step events, then result or error; `verifier_test=1` injects one clearly labelled fake claim (`injected_test=true`). | `pipeline/run.py`, `api/routes_analyze.py`, `api/sse.py`, `tests/test_sse.py` | `curl -N "localhost:8000/analyze?url=<LIVE_RBI_URL>&profile=nbfc&lang=te"` streams steps then one result; with `verifier_test=1` the injected item is `rejected`. Headers include `Cache-Control: no-cache`, `X-Accel-Buffering: no`. |
 | **M10** | `/notices` (parallel feeds, per-source failure isolated, applicability badge), `/tts` (gTTS), `/ics`. | `api/routes_notices.py`, `api/routes_media.py`, `pipeline/ics_export.py`, `sources/feeds.py` | `curl /notices?profile=research_analyst&lang=en` returns live items from ≥ 2 sources; `curl /tts?text=…&lang=te -o a.mp3` plays; `curl /ics?url=<LIVE_RBI_URL>&profile=nbfc` is valid iCalendar (parsed by `ics`) or an empty calendar with a note if no deadlines. |
 
+**M8 explainer rules (learned from the M1 Groq smoke test, put these in `llm/prompts/explain.md`):**
+- Keep regulatory/legal terms in English inside Telugu/Hindi text (e.g. "sanctions list", "KYC", "NBFC"). Code-mixed is how users actually speak, and it avoids mistranslation.
+- Plain text only: no markdown, no headers, no bold.
+- Never add facts beyond the verified items given. (The smoke test, which saw only a title, invented details such as asset blocking and travel bans.)
+
 ### Frontend (Ragula)
 
 | # | Milestone | Files | DONE WHEN |
