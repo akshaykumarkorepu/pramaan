@@ -225,10 +225,10 @@ def check_applicability_rules(profile: str, doc: FetchedDocument) -> Applicabili
         empty = ExtractionResult(kind="obligations", addressees=[], obligations=[])
         result = apply_rules(profile, doc, empty, [])
         if result is None:
-            return Applicability(value="review", reason="open to check")
+            return Applicability(value="review", reason="Open to check if it applies")
         return _check_basis(result, doc)
     except Exception:
-        return Applicability(value="review", reason="open to check")
+        return Applicability(value="review", reason="Open to check if it applies")
 
 
 async def check_applicability(

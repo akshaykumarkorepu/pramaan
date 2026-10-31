@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { Calendar, ChevronDown, FlaskConical, Quote } from "lucide-react";
 import { OBLIGATION_STATUS } from "@/components/status";
-import { formatDeadline, friendlyReason, proofParts } from "@/lib/circular";
+import { formatDeadline, friendlyReason, paragraphLabel, proofParts } from "@/lib/circular";
 import type { Doc, Obligation } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -16,7 +15,7 @@ function Proof({ doc, o, defaultOpen }: { doc: Doc; o: Obligation; defaultOpen: 
       <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-4 py-2.5 text-[13px] font-medium text-slate-700 [&::-webkit-details-marker]:hidden">
         <Quote className="size-3.5 text-slate-400" aria-hidden />
         {rejected ? "The claimed quote" : "Proof from the official text"}
-        {parts && <span className="text-slate-400">· paragraph {parts.id}</span>}
+        {parts && <span className="text-slate-400">· {paragraphLabel(parts.id)}</span>}
         <ChevronDown className="ml-auto size-4 text-slate-400 transition-transform group-open:rotate-180" aria-hidden />
       </summary>
       <div className="border-t border-slate-200 px-4 py-3 text-[14px] leading-relaxed text-slate-700">
@@ -50,17 +49,8 @@ export function ObligationCard({
 }) {
   const reduce = useReducedMotion();
   const test = o.injected_test;
-  // The injected claim is already final in the stream (rejected by the code checker). We show it as "checking…" for a
-  // moment first, then flip it to its real status, so the viewer sees the moment of rejection. The outcome is not faked.
-  const [revealed, setRevealed] = useState(!test);
-  useEffect(() => {
-    if (!test) return;
-    const t = setTimeout(() => setRevealed(true), reduce ? 300 : 1300);
-    return () => clearTimeout(t);
-  }, [test, reduce]);
-
-  const status = revealed ? o.status : null;
-  const rejected = status === "rejected";
+  // The result arrives already checked, so the real status is shown at once; a rejected card only flashes and shakes on arrival.
+  const rejected = o.status === "rejected";
   const st = OBLIGATION_STATUS[o.status];
   const label = o.status === "fixed" ? "Fixed by self-correction" : o.status === "near" && o.score ? `Near match · ${Math.round(o.score)}%` : st.label;
 
@@ -82,11 +72,7 @@ export function ObligationCard({
       )}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{o.who}</p>
-        {status ? (
-          <span className={cn("rounded-full border px-2.5 py-0.5 text-xs font-semibold", st.badge)}>{label}</span>
-        ) : (
-          <span className="rounded-full border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-500">Checking…</span>
-        )}
+        <span className={cn("rounded-full border px-2.5 py-0.5 text-xs font-semibold", st.badge)}>{label}</span>
       </div>
 
       <h3 className={cn("mt-2 text-lg font-semibold leading-snug sm:text-xl", rejected ? "text-slate-500 line-through decoration-rejected/60" : "text-slate-900")}>
@@ -100,7 +86,7 @@ export function ObligationCard({
         </span>
         {o.paragraph && (
           <span className="inline-flex items-center gap-1.5 text-slate-500">
-            Paragraph {o.paragraph}
+            {paragraphLabel(o.paragraph)}
             {o.paragraph_corrected && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-500">corrected</span>}
           </span>
         )}
@@ -111,7 +97,7 @@ export function ObligationCard({
           Rejected: {friendlyReason(o.reason)}. Nothing in the document backs this up.
         </p>
       )}
-      {(revealed || !test) && <Proof doc={doc} o={o} defaultOpen={openProof} />}
+      <Proof doc={doc} o={o} defaultOpen={openProof} />
     </motion.article>
   );
 }

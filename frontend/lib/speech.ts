@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { ttsUrl } from "./api";
 import type { Lang } from "./types";
 
@@ -49,8 +50,9 @@ async function pickVoice(lang: Lang): Promise<SpeechSynthesisVoice | null> {
 }
 
 /**
- * Reads `text` aloud: the browser's own te-IN / hi-IN / en-IN voice when one is installed, otherwise the
- * backend's gTTS mp3 (/tts). `mode` says which one was used.
+ * Reads `text` aloud. English uses the browser's own en-IN voice (falling back to the backend mp3 if there is none).
+ * Telugu and Hindi always use the backend's gTTS mp3 (/tts): browser te-IN / hi-IN voices are often missing or
+ * English-accented. `mode` says which one was used.
  */
 export function useSpeech(text: string, lang: Lang) {
   const [state, setState] = useState<SpeechState>("idle");
@@ -74,13 +76,14 @@ export function useSpeech(text: string, lang: Lang) {
     const me = token.current;
     setError(null);
     setState("loading");
-    const voice = await pickVoice(lang);
+    const voice = lang === "en" ? await pickVoice(lang) : null;
     if (me !== token.current) return;
 
     const fail = (msg: string) => {
       if (me !== token.current) return;
       setError(msg);
       setState("error");
+      toast.error(msg);
     };
 
     if (voice) {

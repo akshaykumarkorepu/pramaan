@@ -93,12 +93,15 @@ export function analyze(
     `${API_URL}/analyze?${qs({ url, profile, lang, verifier_test: verifierTest ? "1" : "0" })}`,
   );
   let finished = false;
+  let gotEvent = false; // nothing received yet usually means the server is still waking up (Render free tier)
   const finish = () => {
     finished = true;
     es.close(); // without this EventSource would reconnect and re-run the analysis
   };
 
   es.onmessage = (msg) => {
+    gotEvent = true;
+    if (finished) return; // cancelled (language switched, new run started) or already done: a late frame must not touch state
     let ev: AnalyzeEvent;
     try {
       ev = JSON.parse(msg.data) as AnalyzeEvent;
@@ -121,7 +124,9 @@ export function analyze(
     onError?.({
       type: "error",
       step: "connection",
-      message: "The connection to the server dropped before the analysis finished. Please try again.",
+      message: gotEvent
+        ? "The connection to the server dropped before the analysis finished. Please try again."
+        : "Couldn't reach the server. It may still be waking up (this can take up to a minute). Please try again.",
       url,
     });
   };

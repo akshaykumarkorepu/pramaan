@@ -44,10 +44,10 @@ async def _applicability(item: FeedItem, profile: str, sem: asyncio.Semaphore) -
         try:
             doc = await asyncio.wait_for(fetch_document(item.url), ITEM_TIMEOUT_S)
         except (DocumentError, asyncio.TimeoutError):
-            return Applicability(value="review", reason="couldn't read the document yet"), datetime.now(timezone.utc)
+            return Applicability(value="review", reason="Couldn't read it yet — open to try again"), datetime.now(timezone.utc)
         except Exception:  # one bad item must never take the list down
             log.exception("notices: unexpected failure for %s", item.url)
-            return Applicability(value="review", reason="couldn't read the document yet"), datetime.now(timezone.utc)
+            return Applicability(value="review", reason="Couldn't read it yet — open to try again"), datetime.now(timezone.utc)
     return check_applicability_rules(profile, doc), doc.fetched_at
 
 
@@ -76,6 +76,21 @@ async def _build(profile: str) -> NoticesResponse:
     ]
     items.sort(key=_sort_key)
     return NoticesResponse(items=items, sources=sources)  # type: ignore[arg-type]
+
+
+async def warm_cache() -> int:
+    """Fill the /notices cache for every profile, one at a time (rules only, zero LLM calls). Never raises; returns how many were filled."""
+    filled = 0
+    for profile in get_args(ProfileId):
+        try:
+            result = await _build(profile)
+            _cache.put(profile, result, all(s.ok for s in result.sources.values()))
+            filled += 1
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("notices warm-up failed for %s", profile)
+    return filled
 
 
 @router.get("/notices", response_model=NoticesResponse)

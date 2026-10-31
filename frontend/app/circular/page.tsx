@@ -4,7 +4,10 @@ import { ArrowLeft } from "lucide-react";
 import { CircularView } from "@/components/circular/CircularView";
 import { isLang, isProfile } from "@/lib/profile";
 
-export const metadata = { title: "Circular — Pramaan" };
+export const metadata = {
+  title: "Circular analysis",
+  description: "A live RBI, SEBI or PIB notice: what it requires of you, with every quote, date and number verified against the official text.",
+};
 
 type SP = Promise<Record<string, string | string[] | undefined>>;
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";

@@ -2,7 +2,7 @@
 import asyncio
 import json
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -173,7 +173,7 @@ def test_verifier_test_injects_exactly_one_rejected_item_without_llm(client, stu
     obs = events[-1]["obligations"]
     injected = [o for o in obs if o["injected_test"]]
     assert len(injected) == 1 and injected[0]["status"] == "rejected" and injected[0]["reason"]
-    assert injected[0]["deadline"] == "2099-12-31"
+    assert injected[0]["deadline"] > date.today().isoformat() and injected[0]["deadline"] <= (date.today() + timedelta(days=60)).isoformat()
     assert stubs.calls["extract"] == 1 and stubs.calls["retry"] == 1  # never extracted again, never retried
     assert events[-1]["counts"] == {"verified": 1, "rejected": 1, "fixed": 0}  # the test claim is not counted
     verify_done = next(e for e in events if e["type"] == "step" and e["name"] == "verify" and e["status"] == "done")

@@ -1,3 +1,6 @@
+import asyncio
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -10,8 +13,27 @@ from api.analyze import router as analyze_router  # noqa: E402
 from api.routes_health import router as health_router  # noqa: E402
 from api.routes_media import router as media_router  # noqa: E402
 from api.routes_notices import router as notices_router  # noqa: E402
+from api.routes_notices import warm_cache  # noqa: E402
 
-app = FastAPI(title="Pramaan API")
+WARM_EVERY_S = 600  # same as the /notices cache TTL, so a visitor almost always finds it warm
+
+
+async def _keep_notices_warm() -> None:
+    while True:
+        await warm_cache()  # never raises
+        await asyncio.sleep(WARM_EVERY_S)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    task = asyncio.create_task(_keep_notices_warm())  # in the background: startup is never blocked by slow feeds
+    try:
+        yield
+    finally:
+        task.cancel()
+
+
+app = FastAPI(title="Pramaan API", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.allowed_origins(),

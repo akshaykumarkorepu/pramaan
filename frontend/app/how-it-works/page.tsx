@@ -2,7 +2,10 @@ import { FadeIn } from "@/components/motion/FadeIn";
 import { PipelineDiagram } from "@/components/how/PipelineDiagram";
 import { BuiltWith, Evidence, Guardrails, HowCta, Limits, Section, Sources, Team } from "@/components/how/HowSections";
 
-export const metadata = { title: "How it works — Pramaan" };
+export const metadata = {
+  title: "How it works",
+  description: "How Pramaan fetches live notices, extracts duties with verbatim quotes, verifies each one in code, and explains only what passed.",
+};
 
 export default function HowItWorks() {
   return (

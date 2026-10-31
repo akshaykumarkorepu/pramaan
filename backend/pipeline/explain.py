@@ -44,22 +44,27 @@ class ExplainMeta(BaseModel):
 
 
 # Template wording per language. Values (names, duties, dates) always stay as the verified items have them.
+# The opening sentence mirrors the applicability banner exactly (yes / review / no); for review and no it already says
+# "here is what it requires", so the duties follow without a label.
 T = {
     "en": {
-        "yes": "This circular applies to you.", "no": "This circular does not apply to you.",
-        "review": "We could not tell whether this circular applies to you; please read the original.",
+        "yes": "This circular applies to you.",
+        "review": "It is not clear whether this circular applies to you; here is what it requires.",
+        "no": "This circular does not appear to apply to you; here is what it requires of others.",
         "duties": "Duties:", "deadline": "deadline", "from": "effective from",
         "none": "No verified duties were found in this document. Please read the original circular.",
     },
     "te": {
-        "yes": "ఈ circular మీకు వర్తిస్తుంది.", "no": "ఈ circular మీకు వర్తించదు.",
-        "review": "ఈ circular మీకు వర్తిస్తుందో లేదో చెప్పలేకపోయాము; దయచేసి original చదవండి.",
+        "yes": "ఈ circular మీకు వర్తిస్తుంది.",
+        "review": "ఈ circular మీకు వర్తిస్తుందో లేదో స్పష్టంగా తెలియదు; ఇది కోరేవి ఇవి.",
+        "no": "ఈ circular మీకు వర్తించినట్లు కనిపించదు; ఇతరుల నుండి ఇది కోరేవి ఇవి.",
         "duties": "చేయవలసినవి:", "deadline": "deadline", "from": "effective from",
         "none": "ఈ document లో verified duties ఏవీ కనిపించలేదు. దయచేసి original circular చదవండి.",
     },
     "hi": {
-        "yes": "यह circular आप पर लागू होता है।", "no": "यह circular आप पर लागू नहीं होता।",
-        "review": "हम तय नहीं कर पाए कि यह circular आप पर लागू होता है या नहीं; कृपया original पढ़ें।",
+        "yes": "यह circular आप पर लागू होता है।",
+        "review": "यह स्पष्ट नहीं है कि यह circular आप पर लागू होता है या नहीं; इसमें यह माँगा गया है।",
+        "no": "यह circular आप पर लागू होता नहीं दिखता; दूसरों से इसमें यह माँगा गया है।",
         "duties": "करने योग्य बातें:", "deadline": "deadline", "from": "effective from",
         "none": "इस document में कोई verified duty नहीं मिली। कृपया original circular पढ़ें।",
     },
@@ -75,10 +80,48 @@ _INLINE_MARK = re.compile(r"[*_`#~|]+")
 
 def clean(text: str) -> str:
     """Plain text on one line: markdown/emoji removed, Telugu/Devanagari digits turned into 0-9."""
+    text = text.replace('\\"', '"')  # models sometimes leave JSON-style escaped quotes in plain text
     text = _LINE_MARK.sub("", text)
     text = _INLINE_MARK.sub("", _EMOJI.sub("", text))
     text = re.sub(r"\d", lambda m: str(unicodedata.digit(m.group())), text)
     return " ".join(text.split())
+
+
+_MONTHS = "January|February|March|April|May|June|July|August|September|October|November|December"
+_DATE = rf"(?:\d{{1,2}}\s+(?:{_MONTHS})\s+\d{{4}}|\d{{4}}-\d{{2}}-\d{{2}})"
+_BY_DATE = re.compile(rf"\bby\s+({_DATE})(?:\s*(?:లోపు|లోగా|तक))?", re.I)
+_DEADLINE_WORD = {"te": "లోపు", "hi": "तक"}
+
+
+def fix_deadlines(text: str, lang: str) -> str:
+    """Models often leave an English "by <date>" inside Telugu/Hindi text. Turn it into "<date> లోపు" / "<date> तक"."""
+    word = _DEADLINE_WORD.get(lang)
+    return _BY_DATE.sub(lambda m: f"{m.group(1)} {word}", text) if word else text
+
+
+# "there are no verified duties" in the three languages (loose on purpose: used only to reject a contradicting answer)
+_SAYS_NONE = re.compile(
+    r"no verified dut|no duties|there are no (?:verified )?(?:duties|obligations)|verified duties ఏవీ|duties ఏవీ|ఏవీ కనిపించలేదు|"
+    r"कोई verified dut|कोई (?:verified )?(?:duty|duties) नहीं|duties नहीं|verified duty नहीं",
+    re.I,
+)
+
+
+def says_no_duties(text: str) -> bool:
+    return bool(_SAYS_NONE.search(text))
+
+
+_SCRIPT_RANGE = {"te": (0x0C00, 0x0C7F), "hi": (0x0900, 0x097F)}
+MIN_SCRIPT_SHARE = 0.25  # of the letters; legal terms, acronyms and names stay English, so it is not 100%
+
+
+def in_language(text: str, lang: str) -> bool:
+    """Telugu/Hindi answers must really be in that script: models sometimes answer in English when the prompt is mostly English."""
+    rng = _SCRIPT_RANGE.get(lang)
+    if not rng:
+        return True
+    letters = [c for c in text if c.isalpha()]
+    return bool(letters) and sum(rng[0] <= ord(c) <= rng[1] for c in letters) / len(letters) >= MIN_SCRIPT_SHARE
 
 
 def _allowed_facts(title: str, items: list[VerifiedObligation], applicability: Applicability):
@@ -89,11 +132,15 @@ def _allowed_facts(title: str, items: list[VerifiedObligation], applicability: A
     return merge(*parts)
 
 
-def check(text: str, title: str, items: list[VerifiedObligation], applicability: Applicability) -> list[str]:
+def check(text: str, title: str, items: list[VerifiedObligation], applicability: Applicability, lang: str = "en") -> list[str]:
     """Problems with a cleaned explainer text; empty = acceptable."""
     if not text:
         return ["the answer was empty"]
     problems = []
+    if not in_language(text, lang):
+        problems.append(f"it is not written in {LANG_NAME.get(lang, lang)}; translate the sentences and duties into {LANG_NAME.get(lang, lang)}")
+    if items and says_no_duties(text):  # contradicts the verified list (and would contradict the banner)
+        problems.append(f"it says there are no verified duties, but {len(items)} verified duties are given; list them")
     if len(text.split()) > WORD_SLACK:
         problems.append(f"it is {len(text.split())} words long; the limit is {MAX_WORDS}")
     bad = missing_facts(extract_facts(text), _allowed_facts(title, items, applicability))
@@ -111,7 +158,8 @@ def build_template(lang: str, items: list[VerifiedObligation], applicability: Ap
     lines = [t[applicability.value]]
     if applicability.reason:
         lines.append(applicability.reason.rstrip(".") + ".")
-    lines.append(t["duties"])
+    if applicability.value == "yes":  # review/no openings already say what the circular requires
+        lines.append(t["duties"])
     for o in items:  # no "1." numbering: list numbers would not be in the items and would fail the number check
         extra = [f"{t['deadline']}: {o.deadline}" if o.deadline else "", f"{t['from']}: {o.effective_from}" if o.effective_from else ""]
         extra = ", ".join(e for e in extra if e)
@@ -165,8 +213,8 @@ async def explain(
             meta.model = call.model_used
             meta.prompt_tokens += call.prompt_tokens
             meta.completion_tokens += call.completion_tokens
-            text = clean(raw)
-            problems = check(text, doc_title, items, applicability)
+            text = fix_deadlines(clean(raw), lang)
+            problems = check(text, doc_title, items, applicability, lang)
             if not problems:
                 meta.method, meta.regenerated = "llm", attempt == 1
                 meta.latency_ms = int((time.perf_counter() - started) * 1000)

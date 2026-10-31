@@ -99,7 +99,7 @@ def test_sorted_yes_then_review_then_no_newest_first(client, fakes):
     assert body["items"][0]["title"] == "rbi 1" and body["items"][0]["reason"].startswith("Addressed to")
     reviews = body["items"][1:4]
     assert [i["date"] for i in reviews[:2]] == ["2026-10-02", "2026-10-01"]  # newest first among dated
-    assert reviews[2]["date"] is None and reviews[2]["reason"] == "open to check"  # undated PIB last
+    assert reviews[2]["date"] is None and reviews[2]["reason"] == "Open to check if it applies"  # undated PIB last
     assert set(body["items"][0]) == {"id", "source", "title", "url", "date", "fetched_at", "applies", "reason"}
     assert len(body["items"][0]["id"]) == 12
 
@@ -121,7 +121,7 @@ def test_unreadable_document_is_review_not_an_error(client, fakes):
     fakes.feeds["pib"] = FeedResult("pib", True, [], NOW)
     body = get(client)
     broken = next(i for i in body["items"] if i["url"] == items[0].url)
-    assert broken["applies"] == "review" and broken["reason"] == "couldn't read the document yet"
+    assert broken["applies"] == "review" and broken["reason"] == "Couldn't read it yet — open to try again"
 
 
 def test_slow_document_times_out_to_review(client, fakes, monkeypatch):
@@ -130,7 +130,7 @@ def test_slow_document_times_out_to_review(client, fakes, monkeypatch):
     fakes.feeds["pib"] = FeedResult("pib", True, [], NOW)
     fakes.delay = 1.0
     monkeypatch.setattr(routes_notices, "ITEM_TIMEOUT_S", 0.05)
-    assert get(client)["items"][0]["reason"] == "couldn't read the document yet"
+    assert get(client)["items"][0]["reason"] == "Couldn't read it yet — open to try again"
 
 
 def test_newest_eight_per_source_and_concurrency_limit(client, fakes):
@@ -174,3 +174,23 @@ def test_bad_profile_or_lang_is_a_friendly_400(client, fakes):
     assert client.get("/notices", params={"profile": "x"}).status_code == 400
     r = client.get("/notices", params={"profile": "nbfc", "lang": "fr"})
     assert r.status_code == 400 and "error" in r.json()
+
+
+def test_warm_cache_fills_every_profile_without_llm(client, fakes):
+    from api.schemas import ProfileId
+    from typing import get_args
+
+    fakes.add("rbi", 1, TO_COOP)
+    fakes.feeds["sebi"] = FeedResult("sebi", True, [], NOW)
+    fakes.feeds["pib"] = FeedResult("pib", True, [], NOW)
+    assert asyncio.run(routes_notices.warm_cache()) == len(get_args(ProfileId)) == 5
+    fakes.feeds.clear()  # the feeds are gone: only the warmed cache can answer now
+    assert get(client, "nbfc")["items"] and get(client, "citizen_msme")["items"]
+
+
+def test_warm_cache_swallows_failures(fakes, monkeypatch):
+    async def boom(profile):
+        raise RuntimeError("feeds exploded")
+
+    monkeypatch.setattr(routes_notices, "_build", boom)
+    assert asyncio.run(routes_notices.warm_cache()) == 0  # logged, never raised

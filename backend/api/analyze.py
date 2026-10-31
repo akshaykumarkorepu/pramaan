@@ -24,12 +24,13 @@ from llm.errors import LLMError
 from pipeline.applicability import check_applicability
 from pipeline.explain import USED, build_template, explain
 from pipeline.extract import extract
+from pipeline.fake_claim import make_fake_claim
 from pipeline.fetch_document import FetchedDocument, fetch_document
 from pipeline.models import ExtractionResult
 from pipeline.retry import retry
-from sources.allowlist import check_allowed
+from sources.allowlist import check_allowed, source_of
 from sources.errors import DocumentError
-from verify.verifier import InjectedObligation, verify
+from verify.verifier import verify
 
 log = logging.getLogger("pramaan.analyze")
 router = APIRouter()
@@ -46,18 +47,6 @@ PROFILE_LABEL = {
     "citizen_msme": "Citizens and MSMEs",
 }
 LANG_NAME = {"en": "English", "te": "Telugu", "hi": "Hindi"}
-
-# The deliberately false claim of verifier_test=1: neither the quote nor the date exists in any real circular.
-TEST_CLAIM = InjectedObligation(
-    who="Verifier test entity",
-    must_do="Deposit a fictitious amount by a fictitious date",
-    deadline="2099-12-31",
-    effective_from=None,
-    paragraph=None,
-    quote="Every entity shall deposit the verifier test amount with the regulator by 31 December 2099.",
-    penalty_or_consequence=None,
-)
-
 
 @dataclass
 class Stage1:
@@ -202,7 +191,7 @@ def _verify_step(run: _Run, st: Stage1, verifier_test: bool, cached: bool) -> Op
     detail = st.details["verify"]
     injected = None
     if verifier_test:
-        injected = verify([TEST_CLAIM], st.doc)[0][0]  # pure code, no LLM, so it is always run live
+        injected = verify([make_fake_claim(source_of(st.doc.url), st.doc)], st.doc)[0][0]  # pure code, no LLM, so it is always run live
         detail += f" (cached); test claim {injected.status} live" if cached else f"; test claim {injected.status} live"
         run.end(detail)
     else:

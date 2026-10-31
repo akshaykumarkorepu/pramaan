@@ -59,3 +59,8 @@ export function formatDeadline(iso: string): string {
   const d = new Date(`${iso}T00:00:00`);
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
+
+/** "Paragraph 6" for ids like "6" or "p6"; the document's own numbering ("2.1", "3.1(a)") is kept as it is. */
+export function paragraphLabel(id: string): string {
+  return `Paragraph ${id.replace(/^p(?=\d)/i, "")}`;
+}
