@@ -37,6 +37,9 @@ Tagline: "New rules, explained in your language, every line proved."
   (429/5xx/timeout): primary -> 1s -> primary -> FAST -> 2s -> FAST. Invalid JSON: one retry with the error included.
   Errors are `LLMError(kind=rate_limit|invalid_output|unavailable|config)` with user-readable messages. Max 4 requests
   in flight. Strict JSON schemas come from `strict_schema(model)` (raw Pydantic schemas get HTTP 400 from Groq).
+- Groq free tier = 8,000 tokens/min PER MODEL (checked 31 Oct). The client honours retry-after up to 30 s. Never fire
+  several documents' LLM calls concurrently in scripts or tests; run them one at a time.
+- Prompts live in llm/prompts/*.md. The RULES in extract.md are the user's wording; do not edit them (a test pins them).
 - Load `.env` with python-dotenv (backend/config.py). Never print or log the key.
 
 ## Stack

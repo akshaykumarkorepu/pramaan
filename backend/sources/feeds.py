@@ -74,6 +74,11 @@ def newest(items: list[FeedItem]) -> FeedItem | None:
     return max(dated, key=lambda i: i.date) if dated else items[0]
 
 
+def newest_n(items: list[FeedItem], n: int) -> list[FeedItem]:
+    """Newest first by date; ties and undated items keep feed order (feeds list newest first)."""
+    return sorted(items, key=lambda i: i.date or date.min, reverse=True)[:n]
+
+
 async def fetch_feed(source: str) -> FeedResult:
     try:
         resp = await get(FEEDS[source], LABELS[source])

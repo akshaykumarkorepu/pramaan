@@ -16,18 +16,18 @@ def reply(content, finish="stop", prompt=10, completion=5):
     )
 
 
-def status_error(code, retry_after=None):
+def status_error(code, retry_after=None, message=None):
     headers = {"retry-after": str(retry_after)} if retry_after is not None else {}
     cls = {
         400: groq.BadRequestError, 401: groq.AuthenticationError, 404: groq.NotFoundError,
         413: groq.APIStatusError, 429: groq.RateLimitError, 500: groq.InternalServerError,
         503: groq.InternalServerError,
     }[code]
-    return cls(f"error {code}", response=httpx.Response(code, headers=headers, request=_REQ), body=None)
+    return cls(message or f"error {code}", response=httpx.Response(code, headers=headers, request=_REQ), body=None)
 
 
-def rate_limit(retry_after=None):
-    return status_error(429, retry_after)
+def rate_limit(retry_after=None, message=None):
+    return status_error(429, retry_after, message)
 
 
 def timeout():

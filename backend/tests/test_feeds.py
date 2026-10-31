@@ -68,3 +68,18 @@ def test_newest_empty():
 def test_garbage_and_empty_input_give_empty_list():
     assert parse_feed("rbi", b"<html>not a feed") == []
     assert parse_feed("rbi", b"") == []
+
+
+def test_newest_n_orders_by_date_and_keeps_feed_order_for_ties_and_undated():
+    from sources.feeds import newest_n
+
+    items = [
+        FeedItem("rbi", "old", "u1", date(2026, 10, 1)),
+        FeedItem("rbi", "new-a", "u2", date(2026, 10, 30)),
+        FeedItem("rbi", "new-b", "u3", date(2026, 10, 30)),
+        FeedItem("rbi", "mid", "u4", date(2026, 10, 15)),
+    ]
+    assert [i.title for i in newest_n(items, 3)] == ["new-a", "new-b", "mid"]
+    undated = [FeedItem("pib", f"p{i}", f"u{i}", None) for i in range(5)]
+    assert [i.title for i in newest_n(undated, 2)] == ["p0", "p1"]
+    assert newest_n([], 3) == []

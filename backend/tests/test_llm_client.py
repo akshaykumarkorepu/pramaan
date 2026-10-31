@@ -164,6 +164,17 @@ def test_retry_after_is_honoured_but_capped(groq_with, sleeps):
     assert sleeps == [client.MAX_RETRY_AFTER_S]
 
 
+@pytest.mark.parametrize("text,expected", [
+    ("Rate limit reached ... Please try again in 26.6175s. Need more tokens?", 26.6175),
+    ("Please try again in 1m3.5s.", 63.5 if client.MAX_RETRY_AFTER_S >= 63.5 else client.MAX_RETRY_AFTER_S),
+    ("Please try again in 450ms.", 1.0),  # the step's own 1 s delay is the floor
+])
+def test_retry_wait_is_read_from_the_message_when_the_header_is_missing(groq_with, sleeps, text, expected):
+    groq_with([rate_limit(message=text), reply("ok")])
+    text_call()
+    assert sleeps == [min(max(expected, 1.0), client.MAX_RETRY_AFTER_S)]
+
+
 def test_fast_role_has_no_fallback(groq_with, sleeps):
     fake = groq_with([rate_limit()] * 3)
     with pytest.raises(LLMError):

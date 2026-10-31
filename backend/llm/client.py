@@ -31,7 +31,7 @@ Effort = Literal["low", "medium", "high"]
 MAX_IN_FLIGHT = 4  # stay under Groq rate limits
 REQUEST_TIMEOUT_S = 30.0
 FAST_FAIL_TIMEOUT_S = 10.0
-MAX_RETRY_AFTER_S = 8.0
+MAX_RETRY_AFTER_S = 30.0  # Groq's free tier allows 8000 tokens/min/model; waiting out the window beats failing
 MAX_TOKENS_CAP = 16384
 BAD_REPLY_ECHO_CHARS = 2000
 
@@ -150,11 +150,22 @@ def _redact(text: str) -> str:
     return text.replace(key, "***") if key else text
 
 
+_TRY_AGAIN = re.compile(r"try again in (?:(\d+)m(?!s))?(?:([\d.]+)(ms|s))?", re.I)
+
+
 def _retry_after(e: groq.APIStatusError) -> float | None:
+    """Seconds Groq asks us to wait: the retry-after header, else the "Please try again in 26.6s" text."""
     try:
         return float(e.response.headers.get("retry-after"))
     except (TypeError, ValueError, AttributeError):
+        pass
+    m = _TRY_AGAIN.search(str(e))
+    if not m or not (m.group(1) or m.group(2)):
         return None
+    seconds = int(m.group(1) or 0) * 60
+    if m.group(2):
+        seconds += float(m.group(2)) / (1000 if m.group(3).lower() == "ms" else 1)
+    return seconds
 
 
 def _classify(e: groq.APIError) -> Exception:
