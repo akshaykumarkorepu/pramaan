@@ -19,6 +19,7 @@ Tagline: "New rules, explained in your language, every line proved."
 - PIB RSS (English): https://www.pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3&reg=3
   Without `&reg=3`, PIB 302-redirects every Lang value to the Hindi feed. Items have no dates.
 - User-pasted links allowed only from rbi.org.in, sebi.gov.in, pib.gov.in
+- Allowed hosts are exact: rbi.org.in, rbidocs.rbi.org.in, sebi.gov.in, pib.gov.in (+www.). Redirects are checked too.
 - Gotchas (probed 31 Oct): RBI feed items carry the full circular HTML in <description>. SEBI circular pages are a
   thin shell whose body is an iframe to a PDF (`.../web/?file=<pdf url>`), so the PDF fallback is mandatory.
   SEBI pubDate looks like `30 Oct, 2026` (stray comma) so parse with dateparser.
@@ -49,7 +50,7 @@ GET /health                                   -> {sources:{rbi,sebi,pib:{ok,last
 GET /notices?profile=&lang=                   -> [{id,source,title,url,date,fetched_at,applies:"yes|no|review",reason}]
 GET /analyze?url=&profile=&lang=&verifier_test=0|1
      -> text/event-stream. events: {"type":"step","name","status":"running|done|failed","ms","detail"}
-        final: {"type":"result","doc":{title,url,fetched_at,paragraphs},
+        final: {"type":"result","doc":{title,url,fetched_at,paragraphs:[{id,text}]},
                 "obligations":[{who,must_do,deadline,effective_from,paragraph,quote,
                                 status:"verified|near|rejected|fixed",reason,match_span,injected_test}],
                 "counts":{verified,rejected,fixed},"applies":{value,reason,quote},
@@ -58,6 +59,7 @@ GET /analyze?url=&profile=&lang=&verifier_test=0|1
         extraction model (internal) also has optional penalty_or_consequence; not returned by the API
 GET /tts?text=&lang=                          -> audio/mpeg (fallback voice via gTTS)
 GET /ics?url=&profile=                        -> text/calendar of verified deadlines
+Paragraph id = the document's own numbering ("2", "2.1", "3.1(a)"), else "p<index>"; numbering also stays in text.
 Profiles: nbfc, coop_bank, research_analyst, stock_broker, citizen_msme
 Languages: en, te, hi
 

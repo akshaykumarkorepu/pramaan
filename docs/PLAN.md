@@ -30,9 +30,9 @@ backend/
 │   ├── __init__.py
 │   ├── http.py                  # shared httpx client: 10 s timeout, 2 retries + backoff, browser UA
 │   ├── feeds.py                 # list_notices(source): RBI / SEBI (/legal/circulars/ only) / PIB (English)
-│   ├── document.py              # fetch_document(url): HTML -> numbered paragraphs, PDF fallback
-│   ├── allowlist.py             # rbi.org.in / sebi.gov.in / pib.gov.in check
-│   └── cache.py                 # cachetools.TTLCache(30 min) keyed by URL (+ content hash for analysis)
+│   ├── errors.py                # typed DocumentError family (domain / fetch / pdf / empty), user-readable
+│   ├── allowlist.py             # exact hosts: rbi.org.in, rbidocs.rbi.org.in, sebi.gov.in, pib.gov.in (+www.)
+│   └── cache.py                 # StatusCache (health). Document cache lives in pipeline/fetch_document.py
 ├── llm/
 │   ├── __init__.py
 │   ├── client.py                # call_json(prompt, schema, model_role) / call_text(...) via groq SDK
@@ -46,6 +46,8 @@ backend/
 │       └── brief.md             # (U2)
 ├── pipeline/
 │   ├── __init__.py
+│   ├── fetch_document.py        # fetch_document(url): HTML -> numbered paragraphs, PDF fallback, 30-min cache
+│   ├── paragraphs.py            # text/blocks -> Paragraph(id, text); numbering, wraps, footers
 │   ├── chunk.py                 # split long docs by paragraph into token-bounded chunks
 │   ├── extract.py               # extract_obligations(doc) -> list[ExtractedObligation]
 │   ├── retry.py                 # re_extract(rejected, doc) — exactly one retry
@@ -176,7 +178,7 @@ class ExtractionResult(BaseModel):
 
 # ---------- /analyze SSE ----------
 class Paragraph(BaseModel):
-    n: str                                 # "4.2" or running index if unnumbered
+    id: str                                # document's own numbering: "2", "2.1", "3.1(a)"; else "p<index>"
     text: str
 
 class Doc(BaseModel):
@@ -186,7 +188,7 @@ class Doc(BaseModel):
     paragraphs: list[Paragraph]
 
 class MatchSpan(BaseModel):
-    paragraph: str                         # Paragraph.n where the quote was found
+    paragraph: str                         # Paragraph.id where the quote was found
     start: int                             # char offsets into that paragraph's ORIGINAL text
     end: int
     matched_text: str                      # shown for "near" matches
@@ -280,7 +282,7 @@ export interface Notice {
   date: string | null; fetched_at: string; applies: Applies; reason: string;
 }
 
-export interface Paragraph { n: string; text: string }
+export interface Paragraph { id: string; text: string }
 export interface Doc { title: string; url: string; fetched_at: string; paragraphs: Paragraph[] }
 export interface MatchSpan { paragraph: string; start: number; end: number; matched_text: string; score: number }
 
@@ -319,7 +321,7 @@ Every **DONE WHEN** runs against real, live data. "LIVE_RBI_URL" / "LIVE_SEBI_UR
 | # | Milestone | Files | DONE WHEN |
 |---|---|---|---|
 | **M1** | **Live data probe + deploy.** Fetch RBI, SEBI, PIB feeds; find English PIB variant; fetch first RBI and first SEBI circular page from the feed (note whether SEBI body is HTML or embedded PDF). Bare FastAPI with `/health` (the probe checks are folded into it; no `/probe` route). `render.yaml` at repo root. Deploy to Render. One Groq call returning Telugu. | `requirements.txt`, `api/main.py`, `api/routes_health.py`, `sources/http.py`, `sources/feeds.py`, `scripts/probe.py`, `scripts/groq_smoke.py`, `render.yaml` | `curl $RENDER_URL/health` shows all 3 sources `ok` (count > 0 and newest page fetched) **from Render**; `python scripts/probe.py` prints body length + PDF link for the newest RBI and SEBI items. `python scripts/groq_smoke.py` prints Telugu + Hindi text, model, ms, tokens. |
-| **M2** | `fetch_document`: HTML → numbered paragraphs, PDF fallback (pdfplumber), domain allow-list, 30-min cache. | `sources/document.py`, `sources/allowlist.py`, `sources/cache.py`, `tests/test_allowlist.py`, `tests/test_document_parse.py` | `pytest -q` green; `pytest -m live -k document` fetches LIVE_RBI_URL and LIVE_SEBI_URL and each returns ≥ 3 paragraphs; a non-gov URL raises a typed refusal. |
+| **M2** | `fetch_document`: HTML → numbered paragraphs, PDF fallback (pdfplumber), domain allow-list, 30-min cache. | `pipeline/fetch_document.py`, `pipeline/paragraphs.py`, `sources/allowlist.py`, `sources/errors.py`, `scripts/show_doc.py`, `tests/test_{allowlist,paragraphs,fetch_document,fetch_document_live}.py` | `pytest -q` green incl. `@pytest.mark.live`; `python scripts/show_doc.py` prints real text for the newest RBI, SEBI (from PDF) and PIB items taken from the feeds; a non-gov URL raises `DomainNotAllowed`. |
 | **M3** | `llm/client.py`: Groq SDK, JSON/structured output, Pydantic validation, retry-once-with-error, 429/5xx backoff → `GROQ_MODEL_FAST`, usage log. | `llm/client.py`, `llm/errors.py`, `llm/usage_log.py`, `tests/test_llm_client.py` | Unit tests cover invalid-JSON retry, 429 → fallback, typed error (via fake transport, no canned circulars). Live: one `call_json` returns a validated object and the usage log has model/tokens/ms. |
 | **M4** | Extraction. Prompt `llm/prompts/extract.md` — **RULES section left for Akshay to write**; code wires prompt loading, chunking, merge + dedupe, `informational` flag. Document text is wrapped as data (prompt-injection guard). | `pipeline/extract.py`, `pipeline/chunk.py`, `llm/prompts/extract.md` | `python -m pipeline.extract <LIVE_RBI_URL>` prints ≥ 1 `ExtractedObligation` with non-empty quote, or `informational=true` for a no-duty notice. |
 | **M5** | Verifier + thorough tests: normalize, exact, near (≥ 92), number/date check, Hindi/Devanagari. | `verify/*.py`, `tests/test_normalize.py`, `tests/test_verifier.py` | `pytest -q tests/test_verifier.py` green with cases: exact, near, fake quote, wrong number, wrong date, Hindi quote, empty quote, ₹/lakh/crore formats. Live: verify M4 output on LIVE_RBI_URL, print counts. |

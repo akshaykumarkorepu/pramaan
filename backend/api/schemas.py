@@ -7,6 +7,11 @@ from pydantic import BaseModel
 SourceId = Literal["rbi", "sebi", "pib"]
 
 
+class Paragraph(BaseModel):
+    id: str  # the document's own numbering ("2", "2.1", "3.1(a)") or "p<index>" when unnumbered
+    text: str  # original numbering stays in the text
+
+
 class SourceHealth(BaseModel):
     # ok = feed has items AND the newest item's page could be fetched
     ok: bool

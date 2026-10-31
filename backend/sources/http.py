@@ -1,6 +1,7 @@
 """Shared HTTP helper: every external call gets a 10 s timeout, 2 retries, a browser User-Agent
 and a user-readable error. Tracebacks never leave this module."""
 import asyncio
+from collections.abc import Callable
 
 import httpx
 
@@ -18,15 +19,27 @@ class FetchError(Exception):
     """Carries a message that is safe to show to the user."""
 
 
-async def get(url: str, label: str, *, transport: httpx.AsyncBaseTransport | None = None) -> httpx.Response:
+async def get(
+    url: str,
+    label: str,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+    host_check: Callable[[str], None] | None = None,
+) -> httpx.Response:
     """GET `url`; retry on timeouts, network errors and 5xx. 4xx is final (retrying won't help).
-    `label` is the human name used in errors, e.g. "RBI". `transport` is only for tests."""
+    `label` is the human name used in errors, e.g. "RBI". `transport` is only for tests.
+    `host_check(url)` runs before every request, including redirect hops, and may raise to stop it."""
     last = "unknown error"
+
+    async def _before_request(request: httpx.Request) -> None:
+        host_check(str(request.url))
+
     async with httpx.AsyncClient(
         headers={"User-Agent": USER_AGENT},
         timeout=TIMEOUT_S,
         follow_redirects=True,
         transport=transport,
+        event_hooks={"request": [_before_request]} if host_check else {},
     ) as client:
         for attempt in range(RETRIES + 1):
             try:
