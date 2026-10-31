@@ -4,7 +4,6 @@ import Link from "next/link";
 import { motion, useReducedMotion } from "motion/react";
 import { ArrowRight, BadgeCheck, Languages, Radio } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { FadeIn } from "@/components/motion/FadeIn";
 import { LangText } from "@/components/LangText";
 import { cn } from "@/lib/utils";
@@ -18,7 +17,7 @@ function Chip({ icon, children }: { icon: React.ReactNode; children: React.React
   );
 }
 
-export function Hero() {
+export function Hero({ onCheck }: { onCheck: () => void }) {
   const reduce = useReducedMotion();
   return (
     <section className="relative isolate overflow-hidden">
@@ -56,19 +55,13 @@ export function Hero() {
         </FadeIn>
         <FadeIn delay={0.36}>
           <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <Tooltip>
-              {/* a disabled button swallows hover, so the tooltip hangs off a focusable wrapper */}
-              <TooltipTrigger render={<span tabIndex={0} className="rounded-lg" />}>
-                <Button
-                  size="lg"
-                  disabled
-                  className="h-11 gap-2 bg-gradient-accent px-6 text-base text-white shadow-lg shadow-indigo-900/20"
-                >
-                  Check new rules <ArrowRight aria-hidden />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Coming next</TooltipContent>
-            </Tooltip>
+            <Button
+              size="lg"
+              onClick={onCheck}
+              className="h-11 gap-2 bg-gradient-accent px-6 text-base text-white shadow-lg shadow-indigo-900/20"
+            >
+              Check new rules <ArrowRight aria-hidden />
+            </Button>
             <Link
               href="/how-it-works"
               className={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-11 bg-white px-6 text-base")}

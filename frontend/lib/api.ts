@@ -66,8 +66,13 @@ export function getHealth(signal?: AbortSignal, timeoutMs = 15_000): Promise<Hea
   return fetchJson<HealthResponse>("/health", timeoutMs, signal);
 }
 
-export function getNotices(profile: ProfileId, lang: Lang, signal?: AbortSignal): Promise<NoticesResponse> {
-  return fetchJson<NoticesResponse>(`/notices?${qs({ profile, lang })}`, 60_000, signal);
+export function getNotices(
+  profile: ProfileId,
+  lang: Lang,
+  signal?: AbortSignal,
+  timeoutMs = 25_000,
+): Promise<NoticesResponse> {
+  return fetchJson<NoticesResponse>(`/notices?${qs({ profile, lang })}`, timeoutMs, signal);
 }
 
 export interface AnalyzeHandlers {
