@@ -1,56 +1,49 @@
 import { Suspense } from "react";
 import Link from "next/link";
-import { ArrowLeft, ExternalLink } from "lucide-react";
-import { FadeIn } from "@/components/motion/FadeIn";
+import { ArrowLeft } from "lucide-react";
+import { CircularView } from "@/components/circular/CircularView";
+import { isLang, isProfile } from "@/lib/profile";
 
 export const metadata = { title: "Circular — Pramaan" };
 
-const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
-
-// F3 placeholder: the live analysis view lands here. For now it just shows what it was opened with.
 type SP = Promise<Record<string, string | string[] | undefined>>;
+const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
 
 export default function CircularPage({ searchParams }: { searchParams: SP }) {
   // reading searchParams is request-time data, so it sits inside Suspense and the page shell can still prerender
   return (
-    <Suspense fallback={<div className="mx-auto h-64 max-w-[1100px] px-4 sm:px-6" />}>
-      <CircularDetails searchParams={searchParams} />
+    <Suspense fallback={<div className="mx-auto h-96 max-w-[1100px] px-4 sm:px-6" />}>
+      <Circular searchParams={searchParams} />
     </Suspense>
   );
 }
 
-async function CircularDetails({ searchParams }: { searchParams: SP }) {
+async function Circular({ searchParams }: { searchParams: SP }) {
   const sp = await searchParams;
-  const url = one(sp.url);
+  const url = one(sp.url).trim();
   const profile = one(sp.profile);
-  const lang = one(sp.lang);
-  // only offer a clickable link for http(s) addresses
-  const safe = /^https?:\/\//i.test(url);
-  return (
-    <div className="mx-auto w-full max-w-[1100px] px-4 py-14 sm:px-6">
-      <FadeIn>
-        <Link href="/" className="inline-flex items-center gap-1.5 text-sm font-medium text-brand hover:underline">
-          <ArrowLeft className="size-4" aria-hidden /> Back to notices
-        </Link>
-        <h1 className="mt-6 text-3xl font-bold text-slate-900 sm:text-4xl">Circular analysis</h1>
-        <p className="mt-3 max-w-2xl text-slate-600">The live, line-by-line verified view arrives in the next release.</p>
-        <dl className="mt-8 grid gap-4 rounded-2xl border border-slate-200 bg-white p-5 text-sm shadow-soft sm:grid-cols-[120px_1fr]">
-          <dt className="font-medium text-slate-500">Profile</dt>
-          <dd className="text-slate-900">{profile || "—"}</dd>
-          <dt className="font-medium text-slate-500">Language</dt>
-          <dd className="text-slate-900">{lang || "—"}</dd>
-          <dt className="font-medium text-slate-500">Notice</dt>
-          <dd className="break-all text-slate-900">
-            {safe ? (
-              <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-brand hover:underline">
-                {url} <ExternalLink className="size-3.5 shrink-0" aria-hidden />
-              </a>
-            ) : (
-              url || "—"
-            )}
-          </dd>
-        </dl>
-      </FadeIn>
-    </div>
-  );
+  const lang = one(sp.lang) || "en";
+
+  const problem = !/^https?:\/\//i.test(url)
+    ? "This page needs a link to an RBI, SEBI or PIB notice. Open one from the notices list."
+    : !isProfile(profile)
+      ? "Choose who you are (NBFC, co-operative bank, research analyst, stock broker or citizen) on the home page first."
+      : !isLang(lang)
+        ? "Choose English, Telugu or Hindi on the home page."
+        : null;
+
+  if (problem || !isProfile(profile) || !isLang(lang)) {
+    return (
+      <div className="mx-auto w-full max-w-[1100px] px-4 py-16 sm:px-6">
+        <div role="alert" className="max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+          <p className="text-base font-semibold text-slate-900">We can&apos;t open this page yet</p>
+          <p className="mt-2 text-[15px] text-slate-600">{problem}</p>
+          <Link href="/" className="mt-5 inline-flex items-center gap-1.5 text-sm font-medium text-brand hover:underline">
+            <ArrowLeft className="size-4" aria-hidden /> All notices
+          </Link>
+        </div>
+      </div>
+    );
+  }
+  return <CircularView url={url} profile={profile} initialLang={lang} />;
 }
