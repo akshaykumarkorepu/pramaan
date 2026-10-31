@@ -208,6 +208,29 @@ def test_retry_after_is_honoured_but_capped(groq_with, sleeps):
     assert sleeps == [client.MAX_RETRY_AFTER_S]
 
 
+def test_on_wait_is_told_about_a_retry_after_wait_only(groq_with, sleeps):
+    waits = []
+    groq_with([rate_limit(retry_after=5), reply("ok")])
+    text_call(on_wait=waits.append)
+    assert waits == [5.0]
+    groq_with([timeout(), reply("ok")])  # plain 1 s backoff is not worth showing
+    text_call(on_wait=waits.append)
+    assert waits == [5.0]
+
+
+def test_on_wait_falls_back_to_the_context_var_and_a_broken_callback_is_harmless(groq_with, sleeps):
+    def boom(_):
+        raise RuntimeError("callback bug")
+
+    groq_with([rate_limit(retry_after=3), reply("ok")])
+    token = client.on_wait_var.set(boom)
+    try:
+        value, _ = text_call()
+    finally:
+        client.on_wait_var.reset(token)
+    assert value == "ok" and sleeps[-1] == 3.0
+
+
 @pytest.mark.parametrize("text,expected", [
     ("Rate limit reached ... Please try again in 26.6175s. Need more tokens?", 26.6175),
     ("Please try again in 1m3.5s.", 63.5 if client.MAX_RETRY_AFTER_S >= 63.5 else client.MAX_RETRY_AFTER_S),

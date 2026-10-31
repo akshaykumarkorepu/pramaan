@@ -6,6 +6,7 @@ import config
 config.load_env()  # must run before anything reads os.environ
 config.setup_logging()
 
+from api.analyze import router as analyze_router  # noqa: E402
 from api.routes_health import router as health_router  # noqa: E402
 
 app = FastAPI(title="Pramaan API")
@@ -16,3 +17,4 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(health_router)
+app.include_router(analyze_router)

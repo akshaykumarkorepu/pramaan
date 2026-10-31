@@ -79,3 +79,50 @@ class HealthResponse(BaseModel):
     sources: dict[SourceId, SourceHealth]
     llm: LLMHealth
     runtime: RuntimeHealth
+
+
+# ---------- /analyze SSE ----------
+StepStatus = Literal["running", "done", "failed"]
+
+
+class Doc(BaseModel):
+    title: str
+    url: str
+    fetched_at: datetime
+    paragraphs: list[Paragraph]
+
+
+class Counts(BaseModel):
+    verified: int  # includes "near"; the injected verifier_test item is not counted
+    rejected: int
+    fixed: int
+
+
+class LLMMeta(BaseModel):
+    model: str  # the model that did the extraction
+    ms: int  # LLM time spent on this request (0 when every step came from cache)
+
+
+class StepEvent(BaseModel):
+    type: Literal["step"] = "step"
+    name: str  # fetch_document | extract | verify | retry | applicability | explain
+    status: StepStatus
+    ms: Optional[int] = None
+    detail: Optional[str] = None
+
+
+class ResultEvent(BaseModel):
+    type: Literal["result"] = "result"
+    doc: Doc
+    obligations: list[VerifiedObligation]
+    counts: Counts
+    applies: Applicability
+    explainer: Optional[Explainer] = None  # null when there are no verified duties to explain
+    llm: LLMMeta
+
+
+class ErrorEvent(BaseModel):
+    type: Literal["error"] = "error"
+    step: str
+    message: str  # user-readable, never a traceback
+    url: Optional[str] = None  # lets the UI offer "read the original"

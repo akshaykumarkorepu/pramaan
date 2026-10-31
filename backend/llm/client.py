@@ -5,6 +5,7 @@ Attempt schedule for a transient failure (429, 5xx, timeout, connection error):
 With no separate FAST model:  primary -> (1 s) -> primary -> (2 s) -> primary.
 Invalid JSON gets one extra retry on the same model with the validation error included."""
 import asyncio
+import contextvars
 import copy
 import json
 import logging
@@ -24,6 +25,10 @@ from llm.errors import LLMError
 
 log = logging.getLogger("pramaan.llm")
 T = TypeVar("T", bound=BaseModel)
+
+# Called with the seconds about to be waited when Groq's retry-after delays a retry. The pipeline sets this once per
+# request (a ContextVar, so extract/retry/explain need no extra parameter); an explicit `on_wait=` argument wins.
+on_wait_var: contextvars.ContextVar[Callable[[float], None] | None] = contextvars.ContextVar("llm_on_wait", default=None)
 
 Role = Literal["primary", "fast"]
 Effort = Literal["low", "medium", "high"]
@@ -248,12 +253,21 @@ def _plan_from(plan: list[Step], model: str) -> list[Step]:
     return plan
 
 
-async def _request(state: _State, plan: list[Step], build: Callable[[str], dict[str, Any]], timeout_s: float):
+async def _request(
+    state: _State, plan: list[Step], build: Callable[[str], dict[str, Any]], timeout_s: float,
+    on_wait: Callable[[float], None] | None = None,
+):
     last: LLMError | None = None
     floor = 0.0
     for model, delay in plan:
         if delay:
-            await _sleep(max(delay, floor))  # honour a (capped) retry-after on the same model
+            wait = max(delay, floor)
+            if floor and on_wait:  # only a rate-limit wait is worth showing; plain backoff is 1-2 s
+                try:
+                    on_wait(wait)
+                except Exception:  # a broken progress callback must never fail the LLM call
+                    log.exception("on_wait callback failed")
+            await _sleep(wait)  # honour a (capped) retry-after on the same model
         floor = 0.0
         try:
             return await _attempt(state, build(model), timeout_s), model
@@ -310,7 +324,9 @@ async def _execute(
     parse: Callable[[str], Any],
     max_tokens: int,
     fast_fail: bool,
+    on_wait: Callable[[float], None] | None = None,
 ):
+    on_wait = on_wait or on_wait_var.get()
     cfg = _config(role)
     state = _State(started=time.perf_counter())
     plan = _plan(cfg.models, fast_fail)
@@ -320,7 +336,7 @@ async def _execute(
     try:
         while True:
             try:
-                resp, used = await _request(state, plan, partial(build, messages=msgs, tokens=tokens), timeout_s)
+                resp, used = await _request(state, plan, partial(build, messages=msgs, tokens=tokens), timeout_s, on_wait)
                 choice = resp.choices[0]
                 content, finish = (choice.message.content or ""), choice.finish_reason
                 if finish == "length":
@@ -381,6 +397,7 @@ async def call_json(
     max_tokens: int = 4096,
     *,
     fast_fail: bool = False,
+    on_wait: Callable[[float], None] | None = None,
 ) -> tuple[T, CallMeta]:
     """Structured output validated with Pydantic. Strict JSON schema where Groq supports it for the model."""
     name = re.sub(r"\W", "_", schema.__name__)[:64]
@@ -406,7 +423,7 @@ async def call_json(
             raise _Invalid(f"it did not match the required JSON format ({problems})", content)
 
     return await _execute(
-        kind="json", role=model, messages=messages, build=build, parse=parse, max_tokens=max_tokens, fast_fail=fast_fail
+        kind="json", role=model, messages=messages, build=build, parse=parse, max_tokens=max_tokens, fast_fail=fast_fail, on_wait=on_wait
     )
 
 
@@ -418,11 +435,12 @@ async def call_text(
     max_tokens: int = 2048,
     *,
     fast_fail: bool = False,
+    on_wait: Callable[[float], None] | None = None,
 ) -> tuple[str, CallMeta]:
     def build(model_id: str, *, messages: list[dict], tokens: int) -> dict[str, Any]:
         return _base_kwargs(model_id, messages, temperature, reasoning_effort, tokens)
 
     return await _execute(
         kind="text", role=model, messages=messages, build=build, parse=lambda c: c.strip(),
-        max_tokens=max_tokens, fast_fail=fast_fail,
+        max_tokens=max_tokens, fast_fail=fast_fail, on_wait=on_wait,
     )

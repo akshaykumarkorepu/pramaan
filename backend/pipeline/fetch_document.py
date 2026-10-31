@@ -43,6 +43,7 @@ class FetchedDocument(BaseModel):
     paragraphs: list[Paragraph]
     full_text: str
     pdf_url: Optional[str] = None
+    from_pdf: bool = False  # the paragraphs were read from a PDF (pdf_url alone only says the page links to one)
     char_count: int
 
 
@@ -180,9 +181,11 @@ async def fetch_document(url: str, *, transport=None) -> FetchedDocument:
 
     resp = await _fetch(url, source, transport)
     pdf_url: str | None = None
+    from_pdf = False
 
     if _is_pdf(resp, url):
         pdf_url = str(resp.url)
+        from_pdf = True
         paras = await _pdf_paragraphs(resp.content, url)
         title = _pdf_title(paras, url)
     else:
@@ -200,6 +203,7 @@ async def fetch_document(url: str, *, transport=None) -> FetchedDocument:
             else:
                 if _chars(pdf_paras) > _chars(paras):
                     paras = pdf_paras
+                    from_pdf = True
 
     full_text = "\n\n".join(p.text for p in paras)
     if len(full_text) < MIN_DOC_CHARS:
@@ -213,6 +217,7 @@ async def fetch_document(url: str, *, transport=None) -> FetchedDocument:
         paragraphs=paras,
         full_text=full_text,
         pdf_url=pdf_url,
+        from_pdf=from_pdf,
         char_count=len(full_text),
     )
     _cache[url] = doc
