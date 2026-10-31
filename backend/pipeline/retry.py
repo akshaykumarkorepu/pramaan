@@ -43,11 +43,6 @@ class RetryCounts(BaseModel):
     fixed: int
 
 
-class DroppedItem(BaseModel):
-    quote: str
-    reason: Optional[str]
-
-
 class RetryMeta(BaseModel):
     llm_calls: int = 0  # 0 or 1, never more
     model: Optional[str] = None
@@ -58,7 +53,7 @@ class RetryMeta(BaseModel):
     quality_sent: int = 0
     fixed: int = 0
     rewritten: int = 0
-    dropped: list[DroppedItem] = []  # removed from the list, kept here so the UI can still show them
+    dropped: int = 0  # kept in the list as rejected ("dropped by self-correction"), never hidden
     note: Optional[str] = None
 
 
@@ -183,13 +178,13 @@ async def retry(obligations: list[VerifiedObligation], doc: FetchedDocument) -> 
     order = list(proposals)
     checked = dict(zip(order, verify([proposals[n] for n in order], doc)[0])) if order else {}
 
-    final: list[VerifiedObligation | None] = list(originals)
+    final = list(originals)
     for n, (kind, _, o) in enumerate(problems):
         pos, a = positions[n], answers.get(n)
         if kind == "rejected":
             if a and a.action == "drop":
-                final[pos] = None
-                meta.dropped.append(DroppedItem(quote=o.quote, reason=o.reason))
+                final[pos] = o.model_copy(update={"reason": f"dropped by self-correction: {o.reason}"})
+                meta.dropped += 1
             elif n in checked:
                 r = checked[n]
                 if r.status == "rejected":
@@ -202,5 +197,4 @@ async def retry(obligations: list[VerifiedObligation], doc: FetchedDocument) -> 
             if r.status != "rejected" and _words(r.must_do) <= MAX_WORDS:
                 final[pos] = o.model_copy(update={"must_do": r.must_do})
                 meta.rewritten += 1
-    result = [o for o in final if o is not None]
-    return result, _counts(result), meta
+    return final, _counts(final), meta

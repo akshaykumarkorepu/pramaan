@@ -77,12 +77,13 @@ def test_a_correction_with_a_number_not_in_the_source_stays_rejected(stub):
     assert run(items)[0][0].status == "rejected"
 
 
-def test_drop_removes_the_item_but_records_it(stub):
+def test_drop_keeps_the_item_as_rejected_with_a_dropped_reason(stub):
     items = verified(ob(quote="Banks must file the yearly return by 27 October 2026."), ob())
     stub(RetryItem(id=0, action="drop", obligation=None, must_do=None))
     final, counts, meta_ = run(items)
-    assert [o.status for o in final] == ["verified"] and counts.rejected == 0
-    assert meta_.dropped[0].quote.startswith("Banks must file") and meta_.dropped[0].reason == "quote not found in source"
+    assert [o.status for o in final] == ["rejected", "verified"] and counts.rejected == 1
+    assert final[0].reason == "dropped by self-correction: quote not found in source"
+    assert final[0].quote == items[0].quote and meta_.dropped == 1
 
 
 def test_quality_rewrite_is_accepted_when_it_passes_the_number_check(stub):

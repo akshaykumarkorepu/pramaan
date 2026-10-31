@@ -77,10 +77,10 @@ async def main() -> int:
         print(f"AFTER:  {fmt(tally(real_after))}")
         print(f"retry: llm_calls={meta.llm_calls} model={meta.model} {meta.latency_ms} ms, "
               f"{meta.prompt_tokens}+{meta.completion_tokens} tokens | sent {meta.rejected_sent} rejected + "
-              f"{meta.quality_sent} quality | fixed {meta.fixed}, rewritten {meta.rewritten}, dropped {len(meta.dropped)}"
+              f"{meta.quality_sent} quality | fixed {meta.fixed}, rewritten {meta.rewritten}, dropped {meta.dropped}"
               f"{' | note: ' + meta.note if meta.note else ''}")
 
-        # `before` and `final` line up except for dropped items, so match on the original quote
+        # match on the original quote (a corrected item has a new quote and is found separately)
         after_by_quote = {}
         for o in final:
             after_by_quote.setdefault(o.quote, []).append(o)
@@ -93,8 +93,6 @@ async def main() -> int:
             elif fixed_in_place:
                 print(f"  CHANGED: rejected ({o.reason}) -> fixed with a corrected quote")
                 print(f"     old quote: \"{short(o.quote)}\"\n     new quote: \"{short(fixed_in_place.quote)}\"")
-        for d in meta.dropped:
-            print(f"  DROPPED: ({d.reason}) \"{short(d.quote)}\"")
         for o in real_before:
             for c in after_by_quote.get(o.quote, []):
                 if c.must_do != o.must_do:
