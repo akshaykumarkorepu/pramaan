@@ -27,3 +27,7 @@ def setup_logging() -> None:
         handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
         app_log.addHandler(handler)
     app_log.setLevel(logging.INFO)
+
+
+# Vercel preview/production URLs of THIS project only (project names start with "pramaan-")
+VERCEL_ORIGIN_REGEX = r"https://pramaan-[a-z0-9-]+\.vercel\.app"

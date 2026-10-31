@@ -15,6 +15,7 @@ app = FastAPI(title="Pramaan API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.allowed_origins(),
+    allow_origin_regex=config.VERCEL_ORIGIN_REGEX,
     allow_methods=["GET"],
     allow_headers=["*"],
     expose_headers=["X-Pramaan-Events", "Content-Disposition"],  # so the browser can read the .ics filename and count

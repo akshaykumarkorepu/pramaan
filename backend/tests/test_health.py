@@ -117,6 +117,28 @@ def test_allowed_origin_accepts_comma_separated_list(monkeypatch):
     assert "access-control-allow-origin" not in c.get("/x", headers={"Origin": "https://evil.example"}).headers
 
 
+def test_vercel_preview_regex_only_matches_our_project():
+    import re
+
+    import config
+
+    rx = re.compile(config.VERCEL_ORIGIN_REGEX)
+    assert rx.fullmatch("https://pramaan-flame.vercel.app")
+    assert rx.fullmatch("https://pramaan-git-feature-akshay.vercel.app")
+    for bad in ("https://evil.vercel.app", "https://pramaan.evil.com", "http://pramaan-x.vercel.app",
+                "https://pramaan-x.vercel.app.evil.com"):
+        assert not rx.fullmatch(bad), bad
+
+
+def test_origin_list_tolerates_spaces_slashes_and_empty(monkeypatch):
+    import config
+
+    monkeypatch.setenv("ALLOWED_ORIGIN", " http://localhost:3000/ ,, https://pramaan-flame.vercel.app/ ")
+    assert config.allowed_origins() == ["http://localhost:3000", "https://pramaan-flame.vercel.app"]
+    monkeypatch.setenv("ALLOWED_ORIGIN", "")
+    assert config.allowed_origins() == []
+
+
 def test_runtime_import_check_ok(client, monkeypatch):
     stub(monkeypatch)
     assert client.get("/health").json()["runtime"] == {"ok": True, "error": None}

@@ -19,6 +19,8 @@ export class ApiError extends Error {
     /** "network" = could not reach the server at all (offline, cold start, CORS); "timeout"; "server" = HTTP error */
     readonly kind: "network" | "timeout" | "server",
     readonly status?: number,
+    /** the underlying fetch error, kept for console debugging only */
+    readonly cause?: unknown,
   ) {
     super(message);
     this.name = "ApiError";
@@ -52,15 +54,15 @@ async function fetchJson<T>(path: string, timeoutMs = 15_000, signal?: AbortSign
     return (await res.json()) as T;
   } catch (e) {
     if (e instanceof ApiError) throw e;
-    if (timedOut) throw new ApiError("The server took too long to answer.", "timeout");
+    if (timedOut) throw new ApiError("The server took too long to answer.", "timeout", undefined, e);
     if (signal?.aborted) throw e; // caller cancelled on purpose
-    throw new ApiError("Could not reach the server. Check your connection and try again.", "network");
+    throw new ApiError("Could not reach the server. Check your connection and try again.", "network", undefined, e);
   } finally {
     clearTimeout(timer);
   }
 }
 
-export function getHealth(signal?: AbortSignal, timeoutMs = 20_000): Promise<HealthResponse> {
+export function getHealth(signal?: AbortSignal, timeoutMs = 15_000): Promise<HealthResponse> {
   return fetchJson<HealthResponse>("/health", timeoutMs, signal);
 }
 

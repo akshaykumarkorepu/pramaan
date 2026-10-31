@@ -37,6 +37,11 @@ export function useHealth() {
         clearInterval(tick);
       } catch (e) {
         if (ctrl.signal.aborted) return;
+        // visible in the browser console so a failure on someone else's machine (e.g. Brave Shields) can be diagnosed
+        console.warn(
+          `[pramaan] /health attempt failed after ${Math.round((Date.now() - startedAt.current) / 1000)}s`,
+          e instanceof ApiError ? { kind: e.kind, status: e.status, message: e.message, cause: e.cause } : e,
+        );
         const msg = e instanceof ApiError ? e.message : "Something went wrong while contacting the server.";
         if (Date.now() - startedAt.current >= GIVE_UP_AFTER_MS) {
           setError(msg);
