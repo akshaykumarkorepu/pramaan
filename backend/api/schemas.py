@@ -7,6 +7,7 @@ from pydantic import BaseModel
 SourceId = Literal["rbi", "sebi", "pib"]
 ProfileId = Literal["nbfc", "coop_bank", "research_analyst", "stock_broker", "citizen_msme"]
 Applies = Literal["yes", "no", "review"]
+Lang = Literal["en", "te", "hi"]
 
 
 class Paragraph(BaseModel):
@@ -46,6 +47,12 @@ class Applicability(BaseModel):
     value: Applies
     reason: str
     quote: Optional[str] = None  # always text found in the document (checked by the M5 matcher)
+
+
+class Explainer(BaseModel):
+    lang: Lang
+    text: str
+    source: Literal["llm", "template"] = "llm"  # "template" = built in code from the verified items (LLM failed the check)
 
 
 class SourceHealth(BaseModel):
