@@ -117,7 +117,7 @@ class ResultEvent(BaseModel):
     obligations: list[VerifiedObligation]
     counts: Counts
     applies: Applicability
-    explainer: Optional[Explainer] = None  # null when there are no verified duties to explain
+    explainer: Explainer  # never null: with no verified duties it is the plain "no verified duties" note
     llm: LLMMeta
 
 
@@ -126,3 +126,26 @@ class ErrorEvent(BaseModel):
     step: str
     message: str  # user-readable, never a traceback
     url: Optional[str] = None  # lets the UI offer "read the original"
+
+
+# ---------- /notices ----------
+class Notice(BaseModel):
+    id: str  # sha1(url)[:12]
+    source: SourceId
+    title: str
+    url: str
+    date: Optional[str] = None  # ISO date; the PIB feed has none
+    fetched_at: datetime
+    applies: Applies  # rules only, no LLM
+    reason: str
+
+
+class NoticeSource(BaseModel):
+    ok: bool
+    error: Optional[str] = None
+    count: int = 0
+
+
+class NoticesResponse(BaseModel):
+    items: list[Notice]
+    sources: dict[SourceId, NoticeSource]

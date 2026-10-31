@@ -156,7 +156,7 @@ class HealthResponse(BaseModel):
     llm: LLMHealth
     runtime: RuntimeHealth
 
-# ---------- /notices ----------
+# ---------- /notices ----------  response = NoticesResponse {items: Notice[], sources: {rbi,sebi,pib: {ok, error, count}}}
 class Notice(BaseModel):
     id: str                                # sha1(url)[:12]
     source: SourceId
@@ -250,7 +250,7 @@ class ResultEvent(BaseModel):
     obligations: list[Obligation]
     counts: Counts
     applies: Applicability
-    explainer: Optional[Explainer] = None  # null when zero verified items
+    explainer: Explainer  # never null: zero verified items -> the plain "no verified duties" note (template)
     llm: LLMMeta
 
 class ErrorEvent(BaseModel):               # proposed addition — terminal, replaces "result"
@@ -316,7 +316,7 @@ export interface Explainer { lang: Lang; text: string }
 export interface StepEvent { type: "step"; name: string; status: StepStatus; ms: number | null; detail: string | null }
 export interface ResultEvent {
   type: "result"; doc: Doc; obligations: Obligation[]; counts: Counts;
-  applies: Applicability; explainer: Explainer | null; llm: { model: string; ms: number };
+  applies: Applicability; explainer: Explainer; llm: { model: string; ms: number };
 }
 export interface ErrorEvent { type: "error"; step: string; message: string; url: string | null }
 export type AnalyzeEvent = StepEvent | ResultEvent | ErrorEvent;
@@ -347,7 +347,7 @@ Every **DONE WHEN** runs against real, live data. "LIVE_RBI_URL" / "LIVE_SEBI_UR
 | **M7** | Applicability: rules table (addressee keywords per profile) first, LLM only when rules say unsure; LLM's quote must pass the verifier, else `review`. | `pipeline/applicability.py`, `llm/prompts/applicability.md`, `tests/test_applicability_rules.py` | Unit tests on inline addressee strings. Live: run all 5 profiles over LIVE_RBI_URL + LIVE_SEBI_URL; at least one differs by profile; every non-`review` LLM answer has a verified quote. |
 | **M8** | Explainer in en/te/hi from verified items only (input is the JSON list, never the doc). | `pipeline/explain.py`, `llm/prompts/explain.md` | Live: te and hi explainers for LIVE_RBI_URL; output script is Telugu/Devanagari; every number in the explainer appears in some verified item (code check). Teammate reads Telugu and signs off. |
 | **M9** | `/analyze` SSE: orchestrator yields step events, then result or error; `verifier_test=1` injects one clearly labelled fake claim (`injected_test=true`). | `pipeline/run.py`, `api/routes_analyze.py`, `api/sse.py`, `tests/test_sse.py` | `curl -N "localhost:8000/analyze?url=<LIVE_RBI_URL>&profile=nbfc&lang=te"` streams steps then one result; with `verifier_test=1` the injected item is `rejected`. Headers include `Cache-Control: no-cache`, `X-Accel-Buffering: no`. |
-| **M10** | `/notices` (parallel feeds, per-source failure isolated, applicability badge), `/tts` (gTTS), `/ics`. | `api/routes_notices.py`, `api/routes_media.py`, `pipeline/ics_export.py`, `sources/feeds.py` | `curl /notices?profile=research_analyst&lang=en` returns live items from ≥ 2 sources; `curl /tts?text=…&lang=te -o a.mp3` plays; `curl /ics?url=<LIVE_RBI_URL>&profile=nbfc` is valid iCalendar (parsed by `ics`) or an empty calendar with a note if no deadlines. |
+| **M10** | `/notices` (parallel feeds, newest 8 per source, per-source failure isolated in a `sources` block, rules-only applicability badge, zero LLM), `/tts` (gTTS, 1200-char cap, 30-min cache), `/ics` (all-day events for verified/near/fixed deadlines, `X-Pramaan-Events`). | `api/routes_notices.py`, `api/routes_media.py`, `pipeline/ics_export.py`, `pipeline/applicability.py` (`check_applicability_rules`) | `curl /notices?profile=coop_bank&lang=te` returns live items with RBI ones `yes`; `curl /tts?text=…&lang=te -o a.mp3` plays; `curl /ics?url=<LIVE_SEBI_URL>&profile=nbfc` is valid iCalendar with the circular's deadline. |
 
 **M8 explainer rules (learned from the M1 Groq smoke test, put these in `llm/prompts/explain.md`):**
 - Keep regulatory/legal terms in English inside Telugu/Hindi text (e.g. "sanctions list", "KYC", "NBFC"). Code-mixed is how users actually speak, and it avoids mistranslation.

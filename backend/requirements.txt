@@ -3,7 +3,9 @@ dateparser==1.4.3
 fastapi==0.162.0
 feedparser==6.0.14
 groq==1.7.0
+gTTS==2.5.4
 httpx==0.28.1
+ics==0.7.3
 pdfplumber==0.11.10
 pydantic==2.14.2
 pytest==9.2.0

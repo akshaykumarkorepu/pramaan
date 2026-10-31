@@ -22,7 +22,7 @@ from api.schemas import (
 from llm.client import on_wait_var
 from llm.errors import LLMError
 from pipeline.applicability import check_applicability
-from pipeline.explain import USED, explain
+from pipeline.explain import USED, build_template, explain
 from pipeline.extract import extract
 from pipeline.fetch_document import FetchedDocument, fetch_document
 from pipeline.models import ExtractionResult
@@ -219,7 +219,7 @@ async def _retry_step(run: _Run, st: Stage1) -> None:
     run.end(st.details["retry"])
 
 
-async def _pipeline(run: _Run, url: str, profile: ProfileId, lang: Lang, verifier_test: bool) -> None:
+async def _pipeline(run: _Run, url: str, profile: ProfileId, lang: Lang, verifier_test: bool, want_explainer: bool = True) -> None:
     on_wait_var.set(run.waiting)  # this task and the tasks it spawns report Groq rate-limit waits
     async with _UrlLock(url):
         st = _stage1.get(url)
@@ -258,11 +258,17 @@ async def _pipeline(run: _Run, url: str, profile: ProfileId, lang: Lang, verifie
             if meta.method in ("rule", "llm"):  # not the "AI check unavailable" fallback
                 _applies[key] = (applies, detail)
 
-        # explainer: only ever built from verified items
+        # explainer: only ever built from verified items. It is never null: with no verified duties explain()
+        # returns the plain "no verified duties" template (no LLM), so the voice button always has text.
         usable = [o for o in st.obligations if o.status in USED]
         explainer: Optional[Explainer] = None
-        if not usable:
-            run.instant("explain", "skipped — no verified duties to explain")
+        if not want_explainer:  # /ics only needs the obligations: a code-built note, no LLM, not cached
+            run.instant("explain", "skipped")
+            explainer = Explainer(lang=lang, text=build_template(lang, usable, applies), source="template")
+        elif not usable:
+            run.begin("explain")
+            explainer, _ = await explain(st.doc.title, st.obligations, applies, profile, lang)
+            run.end("no verified duties, plain note (no AI)")
         else:
             ekey = (url, profile, lang)
             hit = _explainers.get(ekey)
@@ -297,9 +303,9 @@ def _explain_detail(e: Explainer) -> str:
     return f"{LANG_NAME[e.lang]} explainer, {_n(len(e.text.split()), 'word')}" + (" (built from the verified items, no AI)" if e.source == "template" else "")
 
 
-async def _produce(run: _Run, url: str, profile: ProfileId, lang: Lang, verifier_test: bool) -> None:
+async def _produce(run: _Run, url: str, profile: ProfileId, lang: Lang, verifier_test: bool, want_explainer: bool = True) -> None:
     try:
-        await _pipeline(run, url, profile, lang, verifier_test)
+        await _pipeline(run, url, profile, lang, verifier_test, want_explainer)
     except DocumentError as e:
         run.fail(str(e), e.url or url)
     except LLMError as e:
@@ -311,6 +317,23 @@ async def _produce(run: _Run, url: str, profile: ProfileId, lang: Lang, verifier
         run.fail("Something went wrong while analysing this notice. Please try again.", url)
     finally:
         run.queue.put_nowait(None)  # end of stream
+
+
+async def run_analysis(url: str, profile: ProfileId, lang: Lang = "en") -> ResultEvent | ErrorEvent:
+    """Non-streaming run for /ics: same pipeline and caches as /analyze, minus the explainer. Never raises."""
+    run = _Run()
+    try:
+        await asyncio.wait_for(_produce(run, url.strip(), profile, lang, False, want_explainer=False), TOTAL_TIMEOUT_S)
+    except asyncio.TimeoutError:
+        return ErrorEvent(step="request", message="This is taking too long, probably because the AI service is busy. Please try again in a minute.", url=url)
+    final = None
+    while not run.queue.empty():
+        item = run.queue.get_nowait()
+        if item is not None and item["type"] in ("result", "error"):
+            final = item
+    if final is None:
+        return ErrorEvent(step="request", message="Something went wrong while analysing this notice. Please try again.", url=url)
+    return (ResultEvent if final["type"] == "result" else ErrorEvent).model_validate(final)
 
 
 async def _stream(url: str, profile: str, lang: str, verifier_test: bool):

@@ -204,7 +204,32 @@ async def _ask_llm(profile, doc, extraction, verified, meta: ApplicabilityMeta) 
     return Applicability(value=answer.value, reason=_words(answer.reason), quote=answer.quote)
 
 
-# ---------------------------------------------------------------- entry point
+# ---------------------------------------------------------------- entry points
+
+def _check_basis(result: Applicability, doc: FetchedDocument) -> Applicability:
+    """A yes/no stands only if its quote is really in the document (M5 matcher); the quote is replaced by the document's text."""
+    if result.value == "review":
+        return result
+    checked = _find_quote_in_doc(result.quote, doc, normalize_with_map(doc.full_text))
+    if checked is None:
+        return Applicability(value="review", reason="could not verify the basis")
+    return result.model_copy(update={"quote": checked})
+
+
+def check_applicability_rules(profile: str, doc: FetchedDocument) -> Applicability:
+    """Rules only (step 1): no LLM, no extraction. Used by /notices, which must cost zero tokens.
+    yes/no come with a quote found in the document; anything else is "review"."""
+    try:
+        if profile not in OWN:
+            return Applicability(value="review", reason="unknown profile")
+        empty = ExtractionResult(kind="obligations", addressees=[], obligations=[])
+        result = apply_rules(profile, doc, empty, [])
+        if result is None:
+            return Applicability(value="review", reason="open to check")
+        return _check_basis(result, doc)
+    except Exception:
+        return Applicability(value="review", reason="open to check")
+
 
 async def check_applicability(
     profile: ProfileId, doc: FetchedDocument, extraction: ExtractionResult, verified: list[VerifiedObligation]
@@ -224,12 +249,7 @@ async def check_applicability(
             meta.method = "rule"
         else:
             result = await _ask_llm(profile, doc, extraction, good, meta)
-        if result.value != "review":
-            checked = _find_quote_in_doc(result.quote, doc, normalize_with_map(doc.full_text))
-            if checked is None:
-                result = Applicability(value="review", reason="could not verify the basis")
-            else:
-                result = result.model_copy(update={"quote": checked})
+        result = _check_basis(result, doc)
         if meta.latency_ms == 0:
             meta.latency_ms = int((time.perf_counter() - started) * 1000)
         return result, meta

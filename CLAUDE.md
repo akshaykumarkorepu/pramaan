@@ -57,7 +57,10 @@ Deploy: backend on Render (Render is connected to Claude Code), frontend on Verc
 GET /health                                   -> {sources:{rbi,sebi,pib:{ok,last_fetch,count,error}}, llm:{ok,model,error}, runtime:{ok,error}}
                                                  runtime.ok = pipeline.fetch_document imports (no network); catches a broken pdfplumber install
                                                  source ok = feed has items AND its newest item's page fetched; cached 5 min
-GET /notices?profile=&lang=                   -> [{id,source,title,url,date,fetched_at,applies:"yes|no|review",reason}]
+GET /notices?profile=&lang=                   -> {items:[{id,source,title,url,date,fetched_at,applies:"yes|no|review",reason}],
+                                                 sources:{rbi,sebi,pib:{ok,error,count}}}
+                                                 newest 8 per source; applicability by RULES ONLY (no LLM, zero Groq tokens): unsure -> review "open to check",
+                                                 unreadable -> review "couldn't read the document yet"; sorted yes, review, no, newest first; cached 10 min per profile
 GET /analyze?url=&profile=&lang=&verifier_test=0|1
      -> text/event-stream. events: {"type":"step","name","status":"running|done|failed","ms","detail"}
         final: {"type":"result","doc":{title,url,fetched_at,paragraphs:[{id,text}]},
@@ -65,11 +68,13 @@ GET /analyze?url=&profile=&lang=&verifier_test=0|1
                                 status:"verified|near|rejected|fixed",reason,match_span:{start,end,paragraph,para_start,para_end},
                                 matched_text,score,paragraph_corrected,injected_test}],
                 "counts":{verified,rejected,fixed},"applies":{value,reason,quote},
-                "explainer":{lang,text},"llm":{model,ms}}
+                "explainer":{lang,text,source:"llm|template"} (never null: no verified duties -> plain "no verified duties" note),
+                "llm":{model,ms}}
         or, instead of result on failure: {"type":"error","step","message","url"}  (message is user-readable)
         extraction model (internal) also has optional penalty_or_consequence; not returned by the API
-GET /tts?text=&lang=                          -> audio/mpeg (fallback voice via gTTS)
-GET /ics?url=&profile=                        -> text/calendar of verified deadlines
+GET /tts?text=&lang=                          -> audio/mpeg (gTTS; max 1200 chars -> 400 JSON {error}; gTTS down -> 503 JSON; cached 30 min)
+GET /ics?url=&profile=                        -> text/calendar: one all-day event per verified/near/fixed obligation with a deadline; header X-Pramaan-Events: <n>
+                                                 (0 -> valid empty calendar); filename pramaan-<source>-<id>.ics; reuses the cached /analyze result
 Paragraph id = the document's own numbering ("2", "2.1", "3.1(a)"), else "p<index>"; numbering also stays in text.
 Profiles: nbfc, coop_bank, research_analyst, stock_broker, citizen_msme
 Languages: en, te, hi

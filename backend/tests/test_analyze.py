@@ -265,3 +265,41 @@ def test_simultaneous_requests_for_one_url_do_the_work_once(stubs):
     assert stubs.calls["extract"] == 1 and stubs.calls["fetch"] == 1 and stubs.calls["explain"] == 1
     assert a[-1]["type"] == b[-1]["type"] == "result"
     assert analyze._locks == {}  # the lock entry is cleaned up
+
+
+@pytest.mark.parametrize("lang", ["en", "te", "hi"])
+def test_explainer_is_never_null_when_nothing_is_verified(client, stubs, monkeypatch, lang):
+    from pipeline.explain import explain as real_explain
+
+    async def only_rejected(doc):
+        stubs.calls["extract"] += 1
+        meta = CallMeta(model_used="model-x", fallback_used=False, latency_ms=1, prompt_tokens=1, completion_tokens=1, attempts=1)
+        bad = obligation("This sentence was invented and is not in the notice at all.")
+        return ExtractionResult(kind="obligations", addressees=[], obligations=[bad]), meta
+
+    async def no_llm_allowed(*a, **k):
+        raise AssertionError("the no-duties note must not call the LLM")
+
+    import pipeline.explain as explain_mod
+    monkeypatch.setattr(analyze, "extract", only_rejected)
+    monkeypatch.setattr(analyze, "explain", real_explain)  # the real M8 explain(), whose empty case is a template
+    monkeypatch.setattr(explain_mod, "call_text", no_llm_allowed)
+    events, _ = run(client, lang=lang)
+    r = events[-1]
+    assert r["type"] == "result" and r["counts"]["verified"] == 0
+    assert r["explainer"]["lang"] == lang and r["explainer"]["source"] == "template" and r["explainer"]["text"]
+    assert analyze._explainers.get((URL, "coop_bank", lang)) is None  # the plain note is not cached
+
+
+def test_run_analysis_for_ics_reuses_cache_and_never_calls_explain(stubs):
+    first = asyncio.run(analyze.run_analysis(URL, "coop_bank"))
+    assert first.type == "result" and first.explainer.source == "template" and first.counts.verified == 1
+    assert stubs.calls["explain"] == 0
+    asyncio.run(analyze.run_analysis(URL, "coop_bank"))
+    assert stubs.calls["extract"] == 1  # second call served from the per-URL cache
+
+
+def test_run_analysis_returns_an_error_event_instead_of_raising(stubs):
+    stubs.extract_error = LLMError("rate_limit", "The AI service is busy right now.")
+    err = asyncio.run(analyze.run_analysis(URL, "coop_bank"))
+    assert err.type == "error" and err.message == "The AI service is busy right now."
