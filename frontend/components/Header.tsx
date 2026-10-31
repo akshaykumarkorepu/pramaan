@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { motion } from "motion/react";
 import { ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -23,18 +24,19 @@ export function Header() {
         </Link>
         <nav className="flex items-center gap-1" aria-label="Main">
           {NAV.map((n) => {
-            const active = pathname === n.href;
+            const active = n.href === "/" ? pathname === "/" : pathname.startsWith(n.href);
             return (
               <Link
                 key={n.href}
                 href={n.href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
+                  "relative rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
                   active ? "bg-brand-soft text-brand" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
                 )}
               >
                 {n.label}
+                {active && <motion.span layoutId="nav-active" className="absolute inset-x-3 -bottom-[7px] h-0.5 rounded-full bg-gradient-accent" />}
               </Link>
             );
           })}

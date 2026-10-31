@@ -45,5 +45,5 @@ async function Circular({ searchParams }: { searchParams: SP }) {
       </div>
     );
   }
-  return <CircularView url={url} profile={profile} initialLang={lang} />;
+  return <CircularView key={url} url={url} profile={profile} initialLang={lang} />;
 }

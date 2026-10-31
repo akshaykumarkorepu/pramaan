@@ -3,11 +3,11 @@
 import type { Ref } from "react";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { ProfileSelect } from "@/components/ProfileSelect";
 import { LangText } from "@/components/LangText";
 import { FadeIn } from "@/components/motion/FadeIn";
-import { LANGS, PROFILES, isLang, isProfile } from "@/lib/profile";
+import { LANGS, isLang } from "@/lib/profile";
 import type { Lang, ProfileId } from "@/lib/types";
 
 export function ControlPanel({
@@ -43,40 +43,7 @@ export function ControlPanel({
               <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-500">
                 I am a…
               </label>
-              <Select
-                value={profile}
-                onValueChange={(v) => {
-                  if (isProfile(v)) onProfile(v);
-                }}
-              >
-                <SelectTrigger
-                  ref={triggerRef}
-                  aria-label="Who are you"
-                  aria-invalid={showHint && !profile}
-                  className="h-11 w-full bg-white text-[15px]"
-                >
-                  <SelectValue placeholder="Choose who you are">
-                    {(v: ProfileId | null) => {
-                      const p = PROFILES.find((x) => x.id === v);
-                      if (!p) return "Choose who you are";
-                      return (
-                        <>
-                          <p.icon className="size-4 text-brand" aria-hidden />
-                          {p.label}
-                        </>
-                      );
-                    }}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent alignItemWithTrigger={false}>
-                  {PROFILES.map((p) => (
-                    <SelectItem key={p.id} value={p.id} className="py-2 text-[15px]">
-                      <p.icon className="size-4 text-brand" aria-hidden />
-                      {p.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <ProfileSelect profile={profile} onProfile={onProfile} invalid={showHint && !profile} triggerRef={triggerRef} />
               {showHint && !profile && (
                 <p role="alert" className="mt-1.5 text-[13px] font-medium text-rejected">
                   Choose who you are first.

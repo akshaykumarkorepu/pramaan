@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FadeIn } from "@/components/motion/FadeIn";
 import { ActionsBar } from "./ActionsBar";
@@ -19,6 +20,7 @@ import type { Lang, ProfileId } from "@/lib/types";
 export function CircularView({ url, profile, initialLang }: { url: string; profile: ProfileId; initialLang: Lang }) {
   const [lang, setLang] = useState<Lang>(initialLang);
   const [testOn, setTestOn] = useState(false);
+  const router = useRouter();
   const { update } = usePrefs();
   const { steps, phase, result, error, totalMs, runId, start } = useAnalyze();
   const testRef = useRef<HTMLDivElement>(null);
@@ -61,7 +63,14 @@ export function CircularView({ url, profile, initialLang }: { url: string; profi
   return (
     <div className="mx-auto w-full max-w-[1100px] px-4 py-8 sm:px-6 sm:py-12">
       <FadeIn>
-        <CircularHeader title={result?.doc.title ?? null} url={url} profile={profile} lang={lang} onLang={changeLang} />
+        <CircularHeader
+          title={result?.doc.title ?? null}
+          url={url}
+          profile={profile}
+          lang={lang}
+          onLang={changeLang}
+          onAnother={(next) => router.push(`/circular?url=${encodeURIComponent(next)}&profile=${profile}&lang=${lang}`)}
+        />
       </FadeIn>
 
       <div className="mt-8 space-y-6">

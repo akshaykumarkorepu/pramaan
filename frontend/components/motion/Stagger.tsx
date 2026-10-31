@@ -9,11 +9,13 @@ export function Stagger({
   className,
   gap = 0.07,
   delay = 0,
+  inView = false,
 }: {
   children: ReactNode;
   className?: string;
   gap?: number;
   delay?: number;
+  inView?: boolean; // start when scrolled into view instead of on mount
 }) {
   const reduce = useReducedMotion();
   if (reduce) return <div className={className}>{children}</div>;
@@ -21,7 +23,9 @@ export function Stagger({
     <motion.div
       className={className}
       initial="hidden"
-      animate="show"
+      animate={inView ? undefined : "show"}
+      whileInView={inView ? "show" : undefined}
+      viewport={inView ? { once: true, margin: "-60px" } : undefined}
       variants={{ hidden: {}, show: { transition: { staggerChildren: gap, delayChildren: delay } } }}
     >
       {children}

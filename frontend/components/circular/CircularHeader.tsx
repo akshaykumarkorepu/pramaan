@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ArrowLeft, ExternalLink } from "lucide-react";
+import { PasteLink } from "@/components/PasteLink";
 import { SOURCE_STYLE } from "@/components/status";
 import { LangText } from "@/components/LangText";
 import { ShimmerSkeleton } from "@/components/motion/ShimmerSkeleton";
@@ -17,12 +18,14 @@ export function CircularHeader({
   profile,
   lang,
   onLang,
+  onAnother,
 }: {
   title: string | null;
   url: string;
   profile: ProfileId;
   lang: Lang;
   onLang: (l: Lang) => void;
+  onAnother: (url: string) => void;
 }) {
   const src = sourceFromUrl(url);
   const p = PROFILES.find((x) => x.id === profile);
@@ -50,6 +53,7 @@ export function CircularHeader({
           <ShimmerSkeleton className="h-7 w-2/3 max-w-md" />
         </div>
       )}
+      <PasteLink variant="compact" profile={profile} onGo={onAnother} />
       <ToggleGroup
         value={[lang]}
         onValueChange={(v) => {

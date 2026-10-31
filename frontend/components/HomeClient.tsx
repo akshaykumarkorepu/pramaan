@@ -1,16 +1,20 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ControlPanel } from "@/components/ControlPanel";
 import { Hero } from "@/components/Hero";
 import { LiveStatus } from "@/components/LiveStatus";
+import { PasteLink } from "@/components/PasteLink";
 import { NoticesSection } from "@/components/NoticesSection";
 import { usePrefs } from "@/lib/usePrefs";
 import { useNotices } from "@/lib/useNotices";
+import type { ProfileId } from "@/lib/types";
 
 const DEBOUNCE_MS = 400;
 
 export function HomeClient() {
+  const router = useRouter();
   const { prefs, update } = usePrefs();
   const notices = useNotices();
   const [showHint, setShowHint] = useState(false);
@@ -39,6 +43,9 @@ export function HomeClient() {
 
   const scrollToControls = () =>
     document.getElementById("check")?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+
+  const goToCircular = (url: string, profile: ProfileId) =>
+    router.push(`/circular?url=${encodeURIComponent(url)}&profile=${profile}&lang=${prefs.lang}`);
 
   return (
     <>
@@ -73,6 +80,7 @@ export function HomeClient() {
         profile={prefs.profile}
         lang={prefs.lang}
       />
+      <PasteLink id="paste" variant="card" profile={prefs.profile} onProfile={(profile) => update({ profile })} onGo={goToCircular} />
     </>
   );
 }

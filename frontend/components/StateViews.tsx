@@ -50,9 +50,17 @@ export function EmptyNotices({ filtered }: { filtered: boolean }) {
         {filtered ? "Nothing matches these filters" : "No new notices this week"}
       </p>
       <p className="mt-1 max-w-sm text-[13px] text-slate-500">
-        {filtered
-          ? "Try another tab or source."
-          : "Paste a link instead — you'll be able to check any RBI, SEBI or PIB notice by its address."}
+        {filtered ? (
+          "Try another tab or source."
+        ) : (
+          <a
+            href="#paste"
+            onClick={() => setTimeout(() => document.getElementById("paste-input")?.focus({ preventScroll: true }), 50)}
+            className="font-medium text-brand hover:underline"
+          >
+            Paste a link instead
+          </a>
+        )}
       </p>
     </div>
   );
