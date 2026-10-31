@@ -33,6 +33,10 @@ Tagline: "New rules, explained in your language, every line proved."
   to GROQ_MODEL_FAST. Never raise raw exceptions to the API layer; return typed errors.
 - Temperature 0 for extraction/verification-related calls.
 - Log provider, model, tokens and latency per call (shown on the Evidence page later).
+- ALL Groq calls go through llm/client.py (`call_json`, `call_text`); nothing else imports groq. Transient failures
+  (429/5xx/timeout): primary -> 1s -> primary -> FAST -> 2s -> FAST. Invalid JSON: one retry with the error included.
+  Errors are `LLMError(kind=rate_limit|invalid_output|unavailable|config)` with user-readable messages. Max 4 requests
+  in flight. Strict JSON schemas come from `strict_schema(model)` (raw Pydantic schemas get HTTP 400 from Groq).
 - Load `.env` with python-dotenv (backend/config.py). Never print or log the key.
 
 ## Stack
@@ -45,7 +49,8 @@ No database. In-memory TTL cache, 30 min (cachetools). User profile in browser l
 Deploy: backend on Render (Render is connected to Claude Code), frontend on Vercel.
 
 ## API contract
-GET /health                                   -> {sources:{rbi,sebi,pib:{ok,last_fetch,count,error}}, llm:{ok,model,error}}
+GET /health                                   -> {sources:{rbi,sebi,pib:{ok,last_fetch,count,error}}, llm:{ok,model,error}, runtime:{ok,error}}
+                                                 runtime.ok = pipeline.fetch_document imports (no network); catches a broken pdfplumber install
                                                  source ok = feed has items AND its newest item's page fetched; cached 5 min
 GET /notices?profile=&lang=                   -> [{id,source,title,url,date,fetched_at,applies:"yes|no|review",reason}]
 GET /analyze?url=&profile=&lang=&verifier_test=0|1

@@ -147,9 +147,14 @@ class LLMHealth(BaseModel):
     model: Optional[str] = None            # value of GROQ_MODEL_PRIMARY
     error: Optional[str] = None
 
+class RuntimeHealth(BaseModel):            # ok = pipeline.fetch_document imports (catches a broken pdfplumber install)
+    ok: bool
+    error: Optional[str] = None
+
 class HealthResponse(BaseModel):
     sources: dict[SourceId, SourceHealth]
     llm: LLMHealth
+    runtime: RuntimeHealth
 
 # ---------- /notices ----------
 class Notice(BaseModel):
@@ -275,7 +280,11 @@ export type ObligationStatus = "verified" | "near" | "rejected" | "fixed";
 export type StepStatus = "running" | "done" | "failed";
 
 export interface SourceHealth { ok: boolean; last_fetch: string | null; count: number; error?: string | null }
-export interface HealthResponse { sources: Record<SourceId, SourceHealth>; llm: { ok: boolean; model: string | null; error?: string | null } }
+export interface HealthResponse {
+  sources: Record<SourceId, SourceHealth>;
+  llm: { ok: boolean; model: string | null; error?: string | null };
+  runtime: { ok: boolean; error?: string | null };
+}
 
 export interface Notice {
   id: string; source: SourceId; title: string; url: string;
@@ -322,7 +331,7 @@ Every **DONE WHEN** runs against real, live data. "LIVE_RBI_URL" / "LIVE_SEBI_UR
 |---|---|---|---|
 | **M1** | **Live data probe + deploy.** Fetch RBI, SEBI, PIB feeds; find English PIB variant; fetch first RBI and first SEBI circular page from the feed (note whether SEBI body is HTML or embedded PDF). Bare FastAPI with `/health` (the probe checks are folded into it; no `/probe` route). `render.yaml` at repo root. Deploy to Render. One Groq call returning Telugu. | `requirements.txt`, `api/main.py`, `api/routes_health.py`, `sources/http.py`, `sources/feeds.py`, `scripts/probe.py`, `scripts/groq_smoke.py`, `render.yaml` | `curl $RENDER_URL/health` shows all 3 sources `ok` (count > 0 and newest page fetched) **from Render**; `python scripts/probe.py` prints body length + PDF link for the newest RBI and SEBI items. `python scripts/groq_smoke.py` prints Telugu + Hindi text, model, ms, tokens. |
 | **M2** | `fetch_document`: HTML → numbered paragraphs, PDF fallback (pdfplumber), domain allow-list, 30-min cache. | `pipeline/fetch_document.py`, `pipeline/paragraphs.py`, `sources/allowlist.py`, `sources/errors.py`, `scripts/show_doc.py`, `tests/test_{allowlist,paragraphs,fetch_document,fetch_document_live}.py` | `pytest -q` green incl. `@pytest.mark.live`; `python scripts/show_doc.py` prints real text for the newest RBI, SEBI (from PDF) and PIB items taken from the feeds; a non-gov URL raises `DomainNotAllowed`. |
-| **M3** | `llm/client.py`: Groq SDK, JSON/structured output, Pydantic validation, retry-once-with-error, 429/5xx backoff → `GROQ_MODEL_FAST`, usage log. | `llm/client.py`, `llm/errors.py`, `llm/usage_log.py`, `tests/test_llm_client.py` | Unit tests cover invalid-JSON retry, 429 → fallback, typed error (via fake transport, no canned circulars). Live: one `call_json` returns a validated object and the usage log has model/tokens/ms. |
+| **M3** | `llm/client.py` (Groq only): `call_json` (strict JSON schema via `strict_schema()`, Pydantic validation, one retry with the error) and `call_text`; transient failures follow `primary → 1 s → primary → FAST → 2 s → FAST`; typed `LLMError(rate_limit\|invalid_output\|unavailable\|config)`; max 4 concurrent; per-call meta logged + usage log. `/health` pings through it and reports `runtime` (pipeline import check). | `llm/client.py`, `llm/errors.py`, `llm/usage_log.py`, `llm/health.py`, `api/routes_health.py`, `config.py`, `tests/test_llm_client.py`, `tests/test_llm_health.py`, `tests/test_llm_client_live.py` | `pytest -q` green incl. `@pytest.mark.live`: invalid JSON then valid → 2 attempts; 429 twice → fallback model; missing env → `config`; live `call_json` + Telugu `call_text` succeed against Groq. Deployed `/health` shows `llm.ok` and `runtime.ok`. |
 | **M4** | Extraction. Prompt `llm/prompts/extract.md` — **RULES section left for Akshay to write**; code wires prompt loading, chunking, merge + dedupe, `informational` flag. Document text is wrapped as data (prompt-injection guard). | `pipeline/extract.py`, `pipeline/chunk.py`, `llm/prompts/extract.md` | `python -m pipeline.extract <LIVE_RBI_URL>` prints ≥ 1 `ExtractedObligation` with non-empty quote, or `informational=true` for a no-duty notice. |
 | **M5** | Verifier + thorough tests: normalize, exact, near (≥ 92), number/date check, Hindi/Devanagari. | `verify/*.py`, `tests/test_normalize.py`, `tests/test_verifier.py` | `pytest -q tests/test_verifier.py` green with cases: exact, near, fake quote, wrong number, wrong date, Hindi quote, empty quote, ₹/lakh/crore formats. Live: verify M4 output on LIVE_RBI_URL, print counts. |
 | **M6** | One self-correction retry for rejected items, then re-verify; mark recovered items `fixed`. | `pipeline/retry.py`, `llm/prompts/re_extract.md` | Live run on LIVE_RBI_URL with `verifier_test`-style injected bad quote shows the retry step runs exactly once; counts include `fixed` when the model recovers. Unit test proves never > 1 retry. |

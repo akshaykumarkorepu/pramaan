@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import config
 
 config.load_env()  # must run before anything reads os.environ
+config.setup_logging()
 
 from api.routes_health import router as health_router  # noqa: E402
 

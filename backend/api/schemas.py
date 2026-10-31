@@ -26,6 +26,13 @@ class LLMHealth(BaseModel):
     error: Optional[str] = None
 
 
+class RuntimeHealth(BaseModel):
+    # ok = the document pipeline imports (catches a broken pdfplumber/selectolax install); no network involved
+    ok: bool
+    error: Optional[str] = None
+
+
 class HealthResponse(BaseModel):
     sources: dict[SourceId, SourceHealth]
     llm: LLMHealth
+    runtime: RuntimeHealth

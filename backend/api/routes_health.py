@@ -1,9 +1,10 @@
 import asyncio
+import importlib
 import logging
 
 from fastapi import APIRouter
 
-from api.schemas import HealthResponse, SourceHealth
+from api.schemas import HealthResponse, RuntimeHealth, SourceHealth
 from llm import health as llm_health
 from sources.cache import StatusCache
 from sources.feeds import FEEDS, LABELS, fetch_feed, newest
@@ -42,8 +43,18 @@ async def _check_source(source: str) -> SourceHealth:
     return result
 
 
+def _check_runtime() -> RuntimeHealth:
+    """Import (not run) the document pipeline so a broken dependency shows up here instead of on the first request."""
+    try:
+        importlib.import_module("pipeline.fetch_document")
+        return RuntimeHealth(ok=True)
+    except Exception as e:
+        log.exception("runtime import check failed")
+        return RuntimeHealth(ok=False, error=f"{type(e).__name__}: {e}"[:200])
+
+
 @router.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
     sources = list(FEEDS)
     *checks, llm = await asyncio.gather(*(_check_source(s) for s in sources), llm_health.ping())
-    return HealthResponse(sources=dict(zip(sources, checks)), llm=llm)
+    return HealthResponse(sources=dict(zip(sources, checks)), llm=llm, runtime=_check_runtime())

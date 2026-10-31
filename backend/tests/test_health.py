@@ -92,3 +92,25 @@ def test_cors_only_for_allowed_origin(client, monkeypatch):
     bad = client.get("/health", headers={"Origin": "https://evil.example"})
     assert ok.headers.get("access-control-allow-origin") == "http://localhost:3000"
     assert "access-control-allow-origin" not in bad.headers
+
+
+def test_runtime_import_check_ok(client, monkeypatch):
+    stub(monkeypatch)
+    assert client.get("/health").json()["runtime"] == {"ok": True, "error": None}
+
+
+def test_broken_dependency_shows_up_in_runtime_without_breaking_health(client, monkeypatch):
+    stub(monkeypatch)
+    real = routes_health.importlib.import_module
+
+    def broken(name, *a, **kw):
+        if name == "pipeline.fetch_document":
+            raise ImportError("No module named 'pdfplumber'")
+        return real(name, *a, **kw)
+
+    monkeypatch.setattr(routes_health.importlib, "import_module", broken)
+    r = client.get("/health")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["runtime"]["ok"] is False and "pdfplumber" in body["runtime"]["error"]
+    assert body["sources"]["rbi"]["ok"] is True  # everything else still reported
