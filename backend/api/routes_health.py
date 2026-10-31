@@ -43,10 +43,14 @@ async def _check_source(source: str) -> SourceHealth:
     return result
 
 
+RUNTIME_MODULES = ("pipeline.fetch_document", "verify.verifier")  # pdfplumber/selectolax, rapidfuzz/dateparser
+
+
 def _check_runtime() -> RuntimeHealth:
-    """Import (not run) the document pipeline so a broken dependency shows up here instead of on the first request."""
+    """Import (not run) the pipeline modules so a broken dependency shows up here instead of on the first request."""
     try:
-        importlib.import_module("pipeline.fetch_document")
+        for name in RUNTIME_MODULES:
+            importlib.import_module(name)
         return RuntimeHealth(ok=True)
     except Exception as e:
         log.exception("runtime import check failed")

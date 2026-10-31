@@ -12,6 +12,34 @@ class Paragraph(BaseModel):
     text: str  # original numbering stays in the text
 
 
+ObligationStatus = Literal["verified", "near", "rejected", "fixed"]  # "fixed" is set by the M6 retry
+
+
+class MatchSpan(BaseModel):
+    start: int  # offsets into the document's full_text
+    end: int
+    paragraph: str  # id of the paragraph where the match starts
+    para_start: int  # the same span as offsets inside that paragraph's own text (for highlighting)
+    para_end: int
+
+
+class VerifiedObligation(BaseModel):
+    who: str
+    must_do: str
+    deadline: Optional[str] = None
+    effective_from: Optional[str] = None
+    paragraph: Optional[str] = None  # corrected to where the quote was actually found
+    quote: str
+    penalty_or_consequence: Optional[str] = None
+    status: ObligationStatus
+    reason: Optional[str] = None  # set when rejected
+    match_span: Optional[MatchSpan] = None
+    matched_text: Optional[str] = None  # the source text the quote matched (differs from quote for "near")
+    score: Optional[float] = None  # 100 for exact; the fuzzy score otherwise
+    paragraph_corrected: bool = False
+    injected_test: bool = False  # true only for the verifier_test=1 fake claim
+
+
 class SourceHealth(BaseModel):
     # ok = feed has items AND the newest item's page could be fetched
     ok: bool

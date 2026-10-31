@@ -114,3 +114,17 @@ def test_broken_dependency_shows_up_in_runtime_without_breaking_health(client, m
     body = r.json()
     assert body["runtime"]["ok"] is False and "pdfplumber" in body["runtime"]["error"]
     assert body["sources"]["rbi"]["ok"] is True  # everything else still reported
+
+
+def test_broken_verifier_dependency_also_shows_up_in_runtime(client, monkeypatch):
+    stub(monkeypatch)
+    real = routes_health.importlib.import_module
+
+    def broken(name, *a, **kw):
+        if name == "verify.verifier":
+            raise ImportError("No module named 'rapidfuzz'")
+        return real(name, *a, **kw)
+
+    monkeypatch.setattr(routes_health.importlib, "import_module", broken)
+    body = client.get("/health").json()
+    assert body["runtime"]["ok"] is False and "rapidfuzz" in body["runtime"]["error"]

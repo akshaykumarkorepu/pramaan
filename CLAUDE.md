@@ -39,6 +39,8 @@ Tagline: "New rules, explained in your language, every line proved."
   in flight. Strict JSON schemas come from `strict_schema(model)` (raw Pydantic schemas get HTTP 400 from Groq).
 - Groq free tier = 8,000 tokens/min PER MODEL (checked 31 Oct). The client honours retry-after up to 30 s. Never fire
   several documents' LLM calls concurrently in scripts or tests; run them one at a time.
+- verify/ is pure code: it must never import groq, httpx or llm (a test enforces it). A quote is verified only if it is in
+  the source AND every number/date in must_do/deadline/effective_from is in the matched text, compared by value.
 - Prompts live in llm/prompts/*.md. The RULES in extract.md are the user's wording; do not edit them (a test pins them).
 - Load `.env` with python-dotenv (backend/config.py). Never print or log the key.
 
@@ -59,8 +61,9 @@ GET /notices?profile=&lang=                   -> [{id,source,title,url,date,fetc
 GET /analyze?url=&profile=&lang=&verifier_test=0|1
      -> text/event-stream. events: {"type":"step","name","status":"running|done|failed","ms","detail"}
         final: {"type":"result","doc":{title,url,fetched_at,paragraphs:[{id,text}]},
-                "obligations":[{who,must_do,deadline,effective_from,paragraph,quote,
-                                status:"verified|near|rejected|fixed",reason,match_span,injected_test}],
+                "obligations":[{who,must_do,deadline,effective_from,paragraph,quote,penalty_or_consequence,
+                                status:"verified|near|rejected|fixed",reason,match_span:{start,end,paragraph,para_start,para_end},
+                                matched_text,score,paragraph_corrected,injected_test}],
                 "counts":{verified,rejected,fixed},"applies":{value,reason,quote},
                 "explainer":{lang,text},"llm":{model,ms}}
         or, instead of result on failure: {"type":"error","step","message","url"}  (message is user-readable)

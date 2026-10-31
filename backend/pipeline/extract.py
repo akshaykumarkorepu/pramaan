@@ -5,36 +5,18 @@ import asyncio
 import re
 import secrets
 import time
-from typing import Literal, Optional
-
-from pydantic import BaseModel, Field
 
 from api.schemas import Paragraph
 from llm import prompts
 from llm.client import CallMeta, call_json
 from pipeline.fetch_document import FetchedDocument
+from pipeline.models import ExtractedObligation, ExtractionResult  # noqa: F401  (re-exported)
 from verify.normalize import normalize
 
 SINGLE_CALL_MAX_CHARS = 30_000  # documents up to this size are sent in one call
 CHUNK_CHARS = 20_000  # target size of each chunk of a longer document
 HEADER_CAP_CHARS = 3_000  # preamble repeated at the top of later chunks, for the "To" addressees
 MAX_TOKENS = 8192  # the client doubles this (up to its cap) if a reply is cut off
-
-
-class ExtractedObligation(BaseModel):
-    who: str = Field(description="The party exactly as the document names it")
-    must_do: str = Field(description="Plain-English summary of the duty, at most 25 words")
-    deadline: Optional[str] = Field(description="YYYY-MM-DD if an explicit date is in the quote, else null")
-    effective_from: Optional[str] = Field(description="YYYY-MM-DD if an explicit date is in the quote, else null")
-    paragraph: Optional[str] = Field(description="The [id] of the paragraph the quote comes from")
-    quote: str = Field(description="Exact contiguous copy of at most 2 sentences from the document")
-    penalty_or_consequence: Optional[str] = Field(description="Only if the document states one, else null")
-
-
-class ExtractionResult(BaseModel):
-    kind: Literal["obligations", "informational"]
-    addressees: list[str]
-    obligations: list[ExtractedObligation]
 
 
 # ---------------------------------------------------------------- rendering and chunking

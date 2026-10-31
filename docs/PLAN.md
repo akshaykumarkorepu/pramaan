@@ -195,23 +195,29 @@ class Doc(BaseModel):
     paragraphs: list[Paragraph]
 
 class MatchSpan(BaseModel):
-    paragraph: str                         # Paragraph.id where the quote was found
-    start: int                             # char offsets into that paragraph's ORIGINAL text
+    start: int                             # offsets into the document's full_text ("\n\n"-joined paragraphs)
     end: int
-    matched_text: str                      # shown for "near" matches
-    score: float                           # 100.0 exact, >= 92 near
+    paragraph: str                         # Paragraph.id where the match starts
+    para_start: int                        # the same span as offsets inside that paragraph's own text
+    para_end: int
 
-class Obligation(BaseModel):
+class VerifiedObligation(BaseModel):       # api/schemas.py; produced by verify/verifier.py (TS name: Obligation)
     who: str
     must_do: str
     deadline: Optional[str] = None
     effective_from: Optional[str] = None
-    paragraph: Optional[str] = None
+    paragraph: Optional[str] = None        # corrected to where the quote was found
     quote: str
-    status: ObligationStatus
-    reason: Optional[str] = None           # set when rejected: "quote not found", "number not in source: 10"
+    penalty_or_consequence: Optional[str] = None
+    status: ObligationStatus               # verified | near | rejected | fixed (fixed = recovered by the M6 retry)
+    reason: Optional[str] = None           # set when rejected: "quote not found in source", "number/date not in source: 30 lakh"
     match_span: Optional[MatchSpan] = None
+    matched_text: Optional[str] = None     # the source text the quote matched (differs from quote for "near")
+    score: Optional[float] = None          # 100 exact; fuzzy score otherwise (best score even when not found)
+    paragraph_corrected: bool = False
     injected_test: bool = False            # true only for the verifier_test=1 fake claim
+
+# verify() also returns VerifyCounts {verified (exact), near, rejected}; M9 folds near into the displayed "verified".
 
 class Counts(BaseModel):
     verified: int                          # includes "near"
@@ -295,12 +301,13 @@ export interface Notice {
 
 export interface Paragraph { id: string; text: string }
 export interface Doc { title: string; url: string; fetched_at: string; paragraphs: Paragraph[] }
-export interface MatchSpan { paragraph: string; start: number; end: number; matched_text: string; score: number }
+export interface MatchSpan { start: number; end: number; paragraph: string; para_start: number; para_end: number }
 
 export interface Obligation {
   who: string; must_do: string; deadline: string | null; effective_from: string | null;
-  paragraph: string | null; quote: string; status: ObligationStatus; reason: string | null;
-  match_span: MatchSpan | null; injected_test: boolean;
+  paragraph: string | null; quote: string; penalty_or_consequence: string | null;
+  status: ObligationStatus; reason: string | null; match_span: MatchSpan | null;
+  matched_text: string | null; score: number | null; paragraph_corrected: boolean; injected_test: boolean;
 }
 export interface Counts { verified: number; rejected: number; fixed: number }
 export interface Applicability { value: Applies; reason: string; quote: string | null }
@@ -335,7 +342,7 @@ Every **DONE WHEN** runs against real, live data. "LIVE_RBI_URL" / "LIVE_SEBI_UR
 | **M2** | `fetch_document`: HTML → numbered paragraphs, PDF fallback (pdfplumber), domain allow-list, 30-min cache. | `pipeline/fetch_document.py`, `pipeline/paragraphs.py`, `sources/allowlist.py`, `sources/errors.py`, `scripts/show_doc.py`, `tests/test_{allowlist,paragraphs,fetch_document,fetch_document_live}.py` | `pytest -q` green incl. `@pytest.mark.live`; `python scripts/show_doc.py` prints real text for the newest RBI, SEBI (from PDF) and PIB items taken from the feeds; a non-gov URL raises `DomainNotAllowed`. |
 | **M3** | `llm/client.py` (Groq only): `call_json` (strict JSON schema via `strict_schema()`, Pydantic validation, one retry with the error) and `call_text`; transient failures follow `primary → 1 s → primary → FAST → 2 s → FAST`; typed `LLMError(rate_limit\|invalid_output\|unavailable\|config)`; max 4 concurrent; per-call meta logged + usage log. `/health` pings through it and reports `runtime` (pipeline import check). | `llm/client.py`, `llm/errors.py`, `llm/usage_log.py`, `llm/health.py`, `api/routes_health.py`, `config.py`, `tests/test_llm_client.py`, `tests/test_llm_health.py`, `tests/test_llm_client_live.py` | `pytest -q` green incl. `@pytest.mark.live`: invalid JSON then valid → 2 attempts; 429 twice → fallback model; missing env → `config`; live `call_json` + Telugu `call_text` succeed against Groq. Deployed `/health` shows `llm.ok` and `runtime.ok`. |
 | **M4** | Extraction: `llm/prompts/extract.md` (system intro + Akshay's 11 RULES verbatim, guarded by a test); `extract(doc)` renders `[id] text` lines between random per-call markers (injection guard), calls `call_json` (primary, temp 0); >30k chars → ~20k-char chunks with 1-paragraph overlap + repeated header for addressees; merge with cross-chunk de-dup by normalized quote; `kind` derived from the list. Shared `verify/normalize.py`. | `pipeline/extract.py`, `llm/prompts/{__init__.py,extract.md}`, `verify/normalize.py`, `scripts/extract_demo.py`, `tests/test_{extract,extract_live,normalize}.py` | `pytest -q` green incl. live (longest of newest 5 RBI items → `kind=obligations`, ≥1 non-empty quote); `python scripts/extract_demo.py` runs on the newest 3 RBI + 3 SEBI feed items and prints "x of y quotes found". |
-| **M5** | Verifier + thorough tests: normalize, exact, near (≥ 92), number/date check, Hindi/Devanagari. | `verify/*.py`, `tests/test_normalize.py`, `tests/test_verifier.py` | `pytest -q tests/test_verifier.py` green with cases: exact, near, fake quote, wrong number, wrong date, Hindi quote, empty quote, ₹/lakh/crore formats. Live: verify M4 output on LIVE_RBI_URL, print counts. |
+| **M5** | Verifier (pure code, no LLM): offset-preserving normalisation (NFKC per cluster, hyphens/soft hyphens, quotes, whitespace); exact → `verified`, rapidfuzz `partial_ratio_alignment ≥ 92` → `near`, else `rejected`; < 30 chars rejected; numbers and dates compared **by value** (`27 October 2026` = `October 27, 2026`; `10 lakh` = `10,00,000`) for `must_do`/`deadline`/`effective_from` (and the quote itself for near matches); paragraph id corrected to where the match is. RULE 12 added to the extraction prompt. | `verify/{normalize,quotes,numbers,verifier}.py`, `pipeline/models.py`, `api/schemas.py`, `scripts/verify_demo.py`, `tests/test_{verifier,numbers,quotes,normalize}.py` | `pytest -q` green; `python scripts/verify_demo.py` on the newest 2 RBI + 2 SEBI feed items verifies the real obligations and rejects every injected fake ("injected fakes rejected: x of x"). |
 | **M6** | One self-correction retry for rejected items, then re-verify; mark recovered items `fixed`. | `pipeline/retry.py`, `llm/prompts/re_extract.md` | Live run on LIVE_RBI_URL with `verifier_test`-style injected bad quote shows the retry step runs exactly once; counts include `fixed` when the model recovers. Unit test proves never > 1 retry. |
 | **M7** | Applicability: rules table (addressee keywords per profile) first, LLM only when rules say unsure; LLM's quote must pass the verifier, else `review`. | `pipeline/applicability.py`, `llm/prompts/applicability.md`, `tests/test_applicability_rules.py` | Unit tests on inline addressee strings. Live: run all 5 profiles over LIVE_RBI_URL + LIVE_SEBI_URL; at least one differs by profile; every non-`review` LLM answer has a verified quote. |
 | **M8** | Explainer in en/te/hi from verified items only (input is the JSON list, never the doc). | `pipeline/explain.py`, `llm/prompts/explain.md` | Live: te and hi explainers for LIVE_RBI_URL; output script is Telugu/Devanagari; every number in the explainer appears in some verified item (code check). Teammate reads Telugu and signs off. |
