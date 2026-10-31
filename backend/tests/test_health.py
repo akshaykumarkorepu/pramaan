@@ -94,6 +94,29 @@ def test_cors_only_for_allowed_origin(client, monkeypatch):
     assert "access-control-allow-origin" not in bad.headers
 
 
+def test_allowed_origin_accepts_comma_separated_list(monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.middleware.cors import CORSMiddleware
+
+    import config
+
+    monkeypatch.setenv("ALLOWED_ORIGIN", "http://localhost:3000, https://pramaan.vercel.app/ ,")
+    assert config.allowed_origins() == ["http://localhost:3000", "https://pramaan.vercel.app"]
+
+    # the middleware is built at import time, so build a fresh app from the parsed list
+    mini = FastAPI()
+    mini.add_middleware(CORSMiddleware, allow_origins=config.allowed_origins(), allow_methods=["GET"])
+
+    @mini.get("/x")
+    def x():
+        return {}
+
+    c = TestClient(mini)
+    for origin in ("http://localhost:3000", "https://pramaan.vercel.app"):
+        assert c.get("/x", headers={"Origin": origin}).headers["access-control-allow-origin"] == origin
+    assert "access-control-allow-origin" not in c.get("/x", headers={"Origin": "https://evil.example"}).headers
+
+
 def test_runtime_import_check_ok(client, monkeypatch):
     stub(monkeypatch)
     assert client.get("/health").json()["runtime"] == {"ok": True, "error": None}

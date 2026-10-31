@@ -13,8 +13,10 @@ def load_env() -> None:
     load_dotenv(_ROOT_ENV, override=False)
 
 
-def allowed_origin() -> str:
-    return os.environ.get("ALLOWED_ORIGIN", "http://localhost:3000")
+def allowed_origins() -> list[str]:
+    """ALLOWED_ORIGIN may hold several origins separated by commas (local dev + the Vercel URL)."""
+    raw = os.environ.get("ALLOWED_ORIGIN", "http://localhost:3000")
+    return [o.strip().rstrip("/") for o in raw.split(",") if o.strip()]
 
 
 def setup_logging() -> None:

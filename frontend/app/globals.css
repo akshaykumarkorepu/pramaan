@@ -1,0 +1,150 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ---- Design tokens (Tailwind v4 keeps the "tailwind config" in CSS: @theme) ---- */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* the one accent: deep indigo, with a violet partner for the gradient */
+  --color-brand: #3730a3;
+  --color-brand-soft: #eef2ff;
+  --color-violet: #7c3aed;
+
+  /* status colours, identical everywhere: emerald = verified/applies, rose = rejected, amber = review/near, sky = fixed */
+  --color-verified: #059669;
+  --color-verified-soft: #ecfdf5;
+  --color-rejected: #e11d48;
+  --color-rejected-soft: #fff1f2;
+  --color-review: #d97706;
+  --color-review-soft: #fffbeb;
+  --color-fixed: #0284c7;
+  --color-fixed-soft: #f0f9ff;
+
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+  --font-telugu: var(--font-noto-telugu), var(--font-inter), sans-serif;
+  --font-deva: var(--font-noto-deva), var(--font-inter), sans-serif;
+  --font-heading: var(--font-sans);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+
+  --shadow-soft: 0 1px 2px rgb(15 23 42 / 0.04), 0 8px 24px -12px rgb(15 23 42 / 0.10);
+  --shadow-lift: 0 2px 4px rgb(15 23 42 / 0.05), 0 16px 32px -16px rgb(55 48 163 / 0.25);
+
+  --animate-shimmer: shimmer 1.6s ease-in-out infinite;
+  --animate-ping-slow: ping-slow 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+  --animate-indeterminate: indeterminate 1.4s ease-in-out infinite;
+
+  @keyframes shimmer {
+    100% { transform: translateX(100%); }
+  }
+  @keyframes ping-slow {
+    0% { transform: scale(1); opacity: 0.55; }
+    75%, 100% { transform: scale(2.6); opacity: 0; }
+  }
+  @keyframes indeterminate {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(250%); }
+  }
+}
+
+:root {
+  --background: #ffffff;
+  --foreground: #0f172a; /* slate-900 */
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+  --primary: #3730a3;
+  --primary-foreground: #ffffff;
+  --secondary: #f1f5f9;
+  --secondary-foreground: #0f172a;
+  --muted: #f8fafc; /* slate-50 */
+  --muted-foreground: #64748b; /* slate-500 */
+  --accent: #eef2ff;
+  --accent-foreground: #3730a3;
+  --destructive: #e11d48;
+  --border: #e2e8f0; /* slate-200 */
+  --input: #e2e8f0;
+  --ring: #6366f1;
+  --radius: 0.625rem;
+  --gradient-accent: linear-gradient(120deg, #3730a3 0%, #6d28d9 55%, #7c3aed 100%);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-muted text-foreground antialiased;
+  }
+  html {
+    @apply font-sans;
+    scroll-behavior: smooth;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  h1, h2, h3 {
+    letter-spacing: -0.02em;
+  }
+}
+
+@layer utilities {
+  .bg-gradient-accent {
+    background-image: var(--gradient-accent);
+  }
+  .text-gradient-accent {
+    background-image: var(--gradient-accent);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .glass {
+    background: rgb(255 255 255 / 0.72);
+    -webkit-backdrop-filter: saturate(180%) blur(14px);
+    backdrop-filter: saturate(180%) blur(14px);
+  }
+  /* subtle dotted grid for the hero, fading out toward the edges */
+  .bg-dots {
+    background-image: radial-gradient(rgb(100 116 139 / 0.28) 1px, transparent 1px);
+    background-size: 22px 22px;
+    -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, #000 30%, transparent 100%);
+    mask-image: radial-gradient(ellipse 70% 60% at 50% 40%, #000 30%, transparent 100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
