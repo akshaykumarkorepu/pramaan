@@ -9,6 +9,9 @@ RULES
 4. Keep regulatory and legal terms in English inside Telugu and Hindi (for example KYC, NBFC, sanctions list, circular, deadline). Write the way people in Telangana/Andhra or North India actually speak: simple, polite, code-mixed.
 5. Never add any fact, number, date, penalty or advice that is not in the given items.
 6. If there are no verified duties, say so plainly and suggest reading the original.
+7. Do not add closing advice or suggestions (like 'read the original') unless there are no verified duties.
+8. Say deadlines naturally inside the sentence: Telugu '… 31 January 2027 లోపు చేయాలి', Hindi '… 31 January 2027 तक करना है', English '… by 31 January 2027'.
+9. In Hindi say 'circular', not 'निर्देश'. Translate party names into the language unless they are proper names or official titles.
 
 FORMAT
 - Write every number with Western digits (0-9), never Telugu or Devanagari digits.

@@ -16,14 +16,14 @@ def reply(content, finish="stop", prompt=10, completion=5):
     )
 
 
-def status_error(code, retry_after=None, message=None):
+def status_error(code, retry_after=None, message=None, body=None):
     headers = {"retry-after": str(retry_after)} if retry_after is not None else {}
     cls = {
         400: groq.BadRequestError, 401: groq.AuthenticationError, 404: groq.NotFoundError,
         413: groq.APIStatusError, 429: groq.RateLimitError, 500: groq.InternalServerError,
         503: groq.InternalServerError,
     }[code]
-    return cls(message or f"error {code}", response=httpx.Response(code, headers=headers, request=_REQ), body=None)
+    return cls(message or f"error {code}", response=httpx.Response(code, headers=headers, request=_REQ), body=body)
 
 
 def rate_limit(retry_after=None, message=None):
@@ -66,3 +66,10 @@ class FakeGroq:
     @property
     def models(self):
         return [c["model"] for c in self.calls]
+
+
+def json_validate_failed(generated='{"answer": '):
+    """Groq's HTTP 400 when its own JSON validation rejects the model's output."""
+    msg = "Failed to generate JSON. Please adjust your prompt. See 'failed_generation' for more details."
+    body = {"error": {"message": msg, "type": "invalid_request_error", "code": "json_validate_failed", "failed_generation": generated}}
+    return status_error(400, message=f"Error code: 400 - {body}", body=body)

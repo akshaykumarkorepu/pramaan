@@ -9,6 +9,7 @@ import time
 from api.schemas import Paragraph
 from llm import prompts
 from llm.client import CallMeta, call_json
+from llm.errors import LLMError
 from pipeline.fetch_document import FetchedDocument
 from pipeline.models import ExtractedObligation, ExtractionResult  # noqa: F401  (re-exported)
 from verify.normalize import normalize
@@ -126,7 +127,7 @@ def merge_meta(metas: list[CallMeta], wall_ms: int) -> CallMeta:
 # ---------------------------------------------------------------- entry point
 
 async def extract(doc: FetchedDocument) -> tuple[ExtractionResult, CallMeta]:
-    """Raises LLMError (typed, user-readable) if any chunk can't be extracted; never returns partial results."""
+    """Raises LLMError (typed, user-readable; the pipeline shows it as a failed step) if any chunk can't be extracted; never returns partial results."""
     started = time.perf_counter()
     chunks = chunk_paragraphs(doc.paragraphs)
     header = header_context(doc.paragraphs)
@@ -140,8 +141,10 @@ async def extract(doc: FetchedDocument) -> tuple[ExtractionResult, CallMeta]:
 
     outcomes = await asyncio.gather(*(one(i, c) for i, c in enumerate(chunks)), return_exceptions=True)
     for o in outcomes:  # let every chunk finish, then surface the first failure as-is (an LLMError)
-        if isinstance(o, BaseException):
+        if isinstance(o, LLMError):
             raise o
+        if isinstance(o, BaseException):  # never leak a raw exception to the pipeline
+            raise LLMError("unavailable", "The AI service failed unexpectedly. Please try again.", type(o).__name__)
     results = [o[0] for o in outcomes]
     metas = [o[1] for o in outcomes]
     return merge_results(results), merge_meta(metas, int((time.perf_counter() - started) * 1000))

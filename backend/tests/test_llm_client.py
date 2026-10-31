@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from llm import client, usage_log
 from llm.errors import LLMError
-from llm_fakes import FakeGroq, connection_error, rate_limit, reply, status_error, timeout
+from llm_fakes import FakeGroq, connection_error, json_validate_failed, rate_limit, reply, status_error, timeout
 
 KEY = "gsk_SENTINEL_not_a_real_key_123456"
 PRIMARY, FAST = "openai/gpt-oss-120b", "openai/gpt-oss-20b"
@@ -90,6 +90,50 @@ def test_invalid_twice_raises_invalid_output_with_a_user_message(groq_with):
         json_call()
     assert e.value.kind == "invalid_output" and len(fake.calls) == 2
     assert "unexpected format" in str(e.value) and "Traceback" not in str(e.value)
+
+
+def test_json_validate_failed_400_is_retried_once_with_the_bad_output_sent_back(groq_with):
+    fake = groq_with([json_validate_failed('{"answer": "cut'), reply('{"answer": "fine"}')])
+    value, meta = json_call()
+    assert value.answer == "fine" and len(fake.calls) == 2 and fake.models == [PRIMARY, PRIMARY]
+    retry_msgs = fake.calls[1]["messages"]
+    assert any(m["role"] == "assistant" and "cut" in m["content"] for m in retry_msgs)
+    assert "not valid" in retry_msgs[-1]["content"] and not meta.fallback_used
+
+
+def test_json_validate_failed_twice_falls_back_to_the_fast_model(groq_with):
+    fake = groq_with([json_validate_failed(), json_validate_failed(), reply('{"answer": "fine"}')])
+    value, meta = json_call()
+    assert value.answer == "fine" and fake.models == [PRIMARY, PRIMARY, FAST] and meta.fallback_used
+
+
+def test_json_validate_failed_everywhere_raises_invalid_output_not_a_raw_400(groq_with):
+    fake = groq_with([json_validate_failed()] * 3)
+    with pytest.raises(LLMError) as e:
+        json_call()
+    assert e.value.kind == "invalid_output" and fake.models == [PRIMARY, PRIMARY, FAST]
+    assert "400" not in str(e.value) and "json_validate_failed" not in str(e.value)
+
+
+def test_json_validate_failed_in_fast_fail_mode_is_one_attempt(groq_with):
+    fake = groq_with([json_validate_failed()])
+    with pytest.raises(LLMError) as e:
+        json_call(fast_fail=True)
+    assert e.value.kind == "invalid_output" and len(fake.calls) == 1
+
+
+def test_json_validate_failed_for_the_fast_role_gets_one_retry_only(groq_with):
+    fake = groq_with([json_validate_failed()] * 2)
+    with pytest.raises(LLMError) as e:
+        json_call(model="fast")
+    assert e.value.kind == "invalid_output" and fake.models == [FAST, FAST]
+
+
+def test_other_400s_are_still_config_errors(groq_with):
+    groq_with([status_error(400)])
+    with pytest.raises(LLMError) as e:
+        json_call()
+    assert e.value.kind == "config"
 
 
 def test_truncated_reply_is_retried_with_double_the_token_budget(groq_with):

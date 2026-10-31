@@ -168,6 +168,14 @@ def _retry_after(e: groq.APIStatusError) -> float | None:
     return seconds
 
 
+def _failed_generation(e: groq.APIStatusError) -> str:
+    """The model's rejected output, which Groq returns in the 400 body (used to ask the model to correct itself)."""
+    try:
+        return str(e.body["error"]["failed_generation"])
+    except (TypeError, KeyError, AttributeError):
+        return ""
+
+
 def _classify(e: groq.APIError) -> Exception:
     """_Transient -> worth retrying; LLMError -> final."""
     if isinstance(e, groq.APIStatusError):
@@ -177,6 +185,9 @@ def _classify(e: groq.APIError) -> Exception:
             return _Transient(LLMError("rate_limit", msg, detail), _retry_after(e))
         if code >= 500 or code in (408, 409):
             return _Transient(LLMError("unavailable", "The AI service is temporarily unavailable. Please try again.", detail))
+        if code == 400 and "json_validate_failed" in str(e):
+            # Groq's own JSON validation rejected the model's output: that is bad model output, not a bad request
+            return _Invalid("the AI service could not produce JSON matching the schema", _failed_generation(e), provider=True)
         if code in (401, 403):
             return LLMError("config", "The AI service rejected the server's credentials.", detail)
         if code == 404:
@@ -257,9 +268,10 @@ async def _request(state: _State, plan: list[Step], build: Callable[[str], dict[
 # ---------------------------------------------------------------- shared executor
 
 class _Invalid(Exception):
-    def __init__(self, reason: str, content: str = "", truncated: bool = False):
+    def __init__(self, reason: str, content: str = "", truncated: bool = False, provider: bool = False):
         super().__init__(reason)
-        self.reason, self.content, self.truncated = reason, content, truncated
+        # provider=True: Groq itself rejected the output (HTTP 400 json_validate_failed); these also get a FAST-model try
+        self.reason, self.content, self.truncated, self.provider = reason, content, truncated, provider
 
 
 def _is_gpt_oss(model: str) -> bool:
@@ -304,25 +316,28 @@ async def _execute(
     plan = _plan(cfg.models, fast_fail)
     timeout_s = FAST_FAIL_TIMEOUT_S if fast_fail else REQUEST_TIMEOUT_S
     msgs, tokens, used = list(messages), max_tokens, cfg.models[0]
+    full_plan, bad_replies = plan, 0
     try:
-        for parse_try in range(1 if fast_fail else 2):
-            resp, used = await _request(state, plan, partial(build, messages=msgs, tokens=tokens), timeout_s)
-            choice = resp.choices[0]
-            content, finish = (choice.message.content or ""), choice.finish_reason
+        while True:
             try:
+                resp, used = await _request(state, plan, partial(build, messages=msgs, tokens=tokens), timeout_s)
+                choice = resp.choices[0]
+                content, finish = (choice.message.content or ""), choice.finish_reason
                 if finish == "length":
                     raise _Invalid("the reply was cut off before it was complete", content, truncated=True)
                 if not content.strip():
                     raise _Invalid("the reply was empty", content)
                 value = parse(content)
             except _Invalid as bad:
-                if parse_try == (0 if fast_fail else 1):
+                bad_replies += 1
+                # normally: one retry with the error included. A Groq json_validate_failed gets a third try on FAST.
+                can_fall_back = bad.provider and not fast_fail and len(cfg.models) > 1
+                if bad_replies >= (1 if fast_fail else 3 if can_fall_back else 2):
                     raise LLMError(
                         "invalid_output",
                         "The AI returned an answer in an unexpected format, even after a retry. Please try again.",
                         bad.reason[:300],
                     )
-                # one retry on the model that answered, error included; a cut-off reply gets twice the room
                 msgs = list(messages)
                 if bad.content.strip():
                     msgs.append({"role": "assistant", "content": bad.content[:BAD_REPLY_ECHO_CHARS]})
@@ -330,9 +345,12 @@ async def _execute(
                     "role": "user",
                     "content": f"Your previous reply was not valid: {bad.reason}. Reply again, following the original instructions exactly.",
                 })
-                if bad.truncated:
+                if bad.truncated:  # a cut-off reply gets twice the room
                     tokens = min(tokens * 2, MAX_TOKENS_CAP)
-                plan = _plan_from(plan, used)
+                if can_fall_back and bad_replies == 2:
+                    plan = _plan_from(full_plan, cfg.models[1])  # the retry on the same model failed too: try FAST
+                else:
+                    plan = _plan_from(full_plan, state.last_model or used)
                 continue
             meta = _meta(state, used, cfg.models[0])
             log.info(
@@ -350,7 +368,6 @@ async def _execute(
         )
         usage_log.record(kind, role, meta.model_dump(), error_kind=e.kind)
         raise
-    raise AssertionError("unreachable")  # the loop always returns or raises
 
 
 # ---------------------------------------------------------------- public API
