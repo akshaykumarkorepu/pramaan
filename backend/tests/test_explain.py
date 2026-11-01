@@ -160,7 +160,7 @@ def test_telugu_llm_answer_gets_the_deadline_word(monkeypatch):
 def test_template_opening_matches_applicability_and_lists_duties(value, lang):
     a = Applicability(value=value, reason="Addressed to FPIs.")
     text = ex.build_template(lang, [vo(who="FPIs")], a)
-    assert text.startswith(ex.T[lang][value])
+    assert text.startswith(ex.opening(lang, a)) and ex.opening(lang, a).startswith(ex.T[lang][value].rstrip(".।") if value == "yes" else ex.T[lang][value])
     assert "FPIs: Complete re-KYC" in text  # duties are listed for yes, review and no alike
     assert not ex.says_no_duties(text)
     assert ex.check(text, TITLE, [vo(who="FPIs")], a) == []
@@ -226,10 +226,45 @@ def test_english_answer_for_telugu_or_hindi_is_regenerated(monkeypatch, lang, en
 def test_english_answer_twice_for_telugu_falls_back_to_template(monkeypatch):
     stub(monkeypatch, "This applies to you. Do re-KYC.", "This applies to you. Do re-KYC.")
     out, _ = run([vo()], lang="te")
-    assert out.source == "template" and out.text.startswith(ex.T["te"]["yes"])
+    assert out.source == "template" and out.text.startswith(ex.opening("te", APPLIES))
 
 
 def test_in_language_allows_english_terms_inside_te_hi():
     assert ex.in_language("ఈ circular మీకు వర్తిస్తుంది. UCBs KYC పూర్తి చేయాలి.", "te")
     assert not ex.in_language("This circular applies to you.", "hi")
     assert ex.in_language("anything at all", "en")
+
+
+# ---------- the applicability reason is put into plain words ----------
+
+ADDRESSED = Applicability(value="yes", reason='Addressed to "Stock Exchanges."')
+
+
+@pytest.mark.parametrize("lang,expected", [
+    ("en", "This circular applies to you because it is addressed to Stock Exchanges."),
+    ("te", "ఈ circular మీకు వర్తిస్తుంది, ఎందుకంటే ఇది Stock Exchanges కి ఉద్దేశించబడింది."),
+    ("hi", "यह circular आप पर लागू होता है, क्योंकि यह Stock Exchanges को संबोधित है।"),
+])
+def test_template_opening_rewrites_addressed_to_reason(lang, expected):
+    text = ex.build_template(lang, [vo()], ADDRESSED)
+    assert text.startswith(expected)
+    assert '"' not in text.split(expected)[0] + expected and "Addressed to" not in text and ".." not in text
+
+
+def test_review_and_no_openings_put_the_reason_in_its_own_sentence():
+    a = Applicability(value="review", reason='Addressed to "FPIs".')
+    assert ex.build_template("en", [vo()], a).startswith("It is not clear whether this circular applies to you; here is what it requires. It is addressed to FPIs.")
+    b = Applicability(value="no", reason='Addressed to other entities ("Stock Brokers"), not this profile.')
+    assert "It is addressed to other entities (Stock Brokers), not to your profile." in ex.build_template("en", [vo()], b)
+
+
+def test_natural_reason_tidies_other_reasons():
+    assert ex.natural_reason('A verified obligation is placed on "NBFCs".') == "it places a verified duty on NBFCs"
+    assert ex.natural_reason("Open to check if it applies.") == "open to check if it applies"
+    assert ex.natural_reason("RBI names UCBs.") == "RBI names UCBs"
+    assert ex.natural_reason("") == ""
+
+
+def test_llm_input_carries_the_natural_reason_not_the_raw_label():
+    msgs = ex.build_messages("T", "stock_broker", [vo()], ADDRESSED, "te")
+    assert "it is addressed to Stock Exchanges" in msgs[1]["content"] and "Addressed to" not in msgs[1]["content"]
