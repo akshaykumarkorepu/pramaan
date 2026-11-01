@@ -144,11 +144,11 @@ flowchart LR
 | Calendar | ics |
 | Hosting | Render (backend), Vercel (frontend) |
 
-| Source | What | Link |
-|---|---|---|
-| RBI | Notifications RSS, full circular HTML | [feed](https://www.rbi.org.in/notifications_rss.xml) |
-| SEBI | Circulars RSS, plus the linked PDFs | [feed](https://www.sebi.gov.in/sebirss.xml) |
-| PIB | Press releases RSS (English) | [feed](https://www.pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3&reg=3) |
+| Source | What | Website | Link |
+|---|---|---|---|
+| RBI | Notifications RSS, full circular HTML | [Notifications](https://www.rbi.org.in/Scripts/NotificationUser.aspx) | [feed](https://www.rbi.org.in/notifications_rss.xml) |
+| SEBI | Circulars RSS, plus the linked PDFs | [Circulars](https://www.sebi.gov.in/sebiweb/home/HomeAction.do?doListing=yes&sid=1&ssid=7&smid=0) | [feed](https://www.sebi.gov.in/sebirss.xml) |
+| PIB | Press releases RSS (English) | [Press releases](https://www.pib.gov.in/allRel.aspx) | [feed](https://www.pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=3&reg=3) |
 
 Live official data only — no stored, mock or dummy data. Fetch time is always shown. There is no database; results sit in short-lived in-memory caches.
 
