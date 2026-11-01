@@ -13,7 +13,9 @@ from api.analyze import router as analyze_router  # noqa: E402
 from api.routes_health import router as health_router  # noqa: E402
 from api.routes_media import router as media_router  # noqa: E402
 from api.routes_notices import router as notices_router  # noqa: E402
+from api.routes_warm import router as warm_router  # noqa: E402
 from api.routes_notices import warm_cache  # noqa: E402
+from pipeline.warmer import keep_warm  # noqa: E402
 
 WARM_EVERY_S = 600  # same as the /notices cache TTL, so a visitor almost always finds it warm
 
@@ -26,11 +28,13 @@ async def _keep_notices_warm() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    task = asyncio.create_task(_keep_notices_warm())  # in the background: startup is never blocked by slow feeds
+    # in the background: startup is never blocked by slow feeds or the AI service
+    tasks = [asyncio.create_task(_keep_notices_warm()), asyncio.create_task(keep_warm())]
     try:
         yield
     finally:
-        task.cancel()
+        for t in tasks:
+            t.cancel()
 
 
 app = FastAPI(title="Pramaan API", lifespan=lifespan)
@@ -46,3 +50,4 @@ app.include_router(health_router)
 app.include_router(analyze_router)
 app.include_router(notices_router)
 app.include_router(media_router)
+app.include_router(warm_router)

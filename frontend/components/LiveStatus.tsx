@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Bot, ChevronDown, Cpu, RefreshCw } from "lucide-react";
+import { AlertTriangle, Bot, ChevronDown, Cpu, RefreshCw, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CountUp } from "@/components/motion/CountUp";
 import { FadeIn } from "@/components/motion/FadeIn";
@@ -8,6 +8,7 @@ import { PulseDot } from "@/components/motion/PulseDot";
 import { ShimmerSkeleton } from "@/components/motion/ShimmerSkeleton";
 import { ago, useNow } from "@/lib/time";
 import { useHealth } from "@/lib/useHealth";
+import { useWarmStatus } from "@/lib/useWarmStatus";
 import type { HealthResponse, SourceHealth, SourceId } from "@/lib/types";
 
 const SOURCES: { id: SourceId; name: string; full: string }[] = [
@@ -65,6 +66,7 @@ function allOk(h: HealthResponse) {
 export function LiveStatus() {
   const { phase, data, error, elapsedMs, giveUpAfterMs, retry } = useHealth();
   const now = useNow();
+  const warm = useWarmStatus(phase === "ready");
   const waking = phase === "loading" || phase === "waking";
   const progress = Math.min(100, (elapsedMs / giveUpAfterMs) * 100);
 
@@ -86,6 +88,11 @@ export function LiveStatus() {
             <PulseDot tone={tone} />
             <span className="font-medium text-slate-900">System status</span>
             <span className="text-slate-500">· {summary}</span>
+            {warm && warm.cached_count > 0 && (
+              <span className="hidden text-xs text-slate-400 md:inline">
+                · {warm.cached_count} {warm.cached_count === 1 ? "circular" : "circulars"} pre-analysed
+              </span>
+            )}
             {phase === "ready" && data && (
               <span className="ml-auto hidden items-center gap-3 text-xs text-slate-500 sm:flex">
                 {SOURCES.map((s) => (
@@ -149,6 +156,18 @@ export function LiveStatus() {
                   sub={data.llm.ok ? (data.llm.model ?? "Connected") : (data.llm.error ?? "The AI service is not responding.")}
                   right={<Bot className="size-5 text-slate-300" aria-hidden />}
                 />
+                {warm && (
+                  <Row
+                    tone="ok"
+                    title="Pre-analysed circulars"
+                    sub={
+                      warm.running
+                        ? `${warm.cached_count} ready · analysing the next one in the background (${warm.queued} left)`
+                        : `${warm.cached_count} ${warm.cached_count === 1 ? "circular" : "circulars"} ready to open instantly`
+                    }
+                    right={<Zap className="size-5 text-slate-300" aria-hidden />}
+                  />
+                )}
                 <Row
                   tone={data.runtime.ok ? "ok" : "fail"}
                   title="Document reader"

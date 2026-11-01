@@ -7,6 +7,8 @@ import type {
   ProfileId,
   ResultEvent,
   StepEvent,
+  WarmStatus,
+  Doc,
 } from "./types";
 
 // Browser talks to the backend directly (not through Next API routes) so SSE streams work.
@@ -73,6 +75,15 @@ export function getNotices(
   timeoutMs = 25_000,
 ): Promise<NoticesResponse> {
   return fetchJson<NoticesResponse>(`/notices?${qs({ profile, lang })}`, timeoutMs, signal);
+}
+
+export function getWarmStatus(signal?: AbortSignal): Promise<WarmStatus> {
+  return fetchJson<WarmStatus>("/warm/status", 10_000, signal);
+}
+
+/** The official text of an already analysed notice, from the server's cache (never re-analyses). */
+export function getDoc(url: string, signal?: AbortSignal): Promise<Doc> {
+  return fetchJson<Doc>(`/doc?${qs({ url })}`, 15_000, signal);
 }
 
 export interface AnalyzeHandlers {

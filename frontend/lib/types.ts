@@ -50,6 +50,14 @@ export interface NoticesResponse {
   sources: Record<SourceId, NoticeSource>;
 }
 
+// ---------- /warm/status ----------
+export interface WarmStatus {
+  running: boolean;
+  queued: number;
+  cached_count: number; // circulars analysed ahead of time (or by a visitor): opening one is instant
+  last_run_at: string | null;
+}
+
 // ---------- /analyze (SSE) ----------
 export interface Paragraph {
   id: string;

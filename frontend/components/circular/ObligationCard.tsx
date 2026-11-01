@@ -1,7 +1,8 @@
 "use client";
 
 import { motion, useReducedMotion } from "motion/react";
-import { Calendar, ChevronDown, FlaskConical, Quote } from "lucide-react";
+import { Calendar, ChevronDown, FileSearch, FlaskConical, Quote } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { OBLIGATION_STATUS } from "@/components/status";
 import { formatDeadline, friendlyReason, paragraphLabel, proofParts } from "@/lib/circular";
 import type { Doc, Obligation } from "@/lib/types";
@@ -41,11 +42,13 @@ export function ObligationCard({
   doc,
   index,
   openProof,
+  onShow,
 }: {
   o: Obligation;
   doc: Doc;
   index: number;
   openProof: boolean;
+  onShow?: () => void;
 }) {
   const reduce = useReducedMotion();
   const test = o.injected_test;
@@ -98,6 +101,11 @@ export function ObligationCard({
         </p>
       )}
       <Proof doc={doc} o={o} defaultOpen={openProof} />
+      {onShow && (
+        <Button variant="outline" size="sm" onClick={onShow} className="mt-3 h-9 gap-1.5 bg-white">
+          <FileSearch aria-hidden /> Show in document
+        </Button>
+      )}
     </motion.article>
   );
 }

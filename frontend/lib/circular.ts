@@ -64,3 +64,48 @@ export function formatDeadline(iso: string): string {
 export function paragraphLabel(id: string): string {
   return `Paragraph ${id.replace(/^p(?=\d)/i, "")}`;
 }
+
+/** One duty's proof sentence as a place in the document. */
+export interface DocHighlight {
+  obligation: Obligation;
+  paragraph: string;
+  start: number; // offsets inside that paragraph's text
+  end: number;
+}
+
+/**
+ * The duties that can be marked in the document: verified / near / fixed ones that have a match_span, in reading order
+ * (paragraph order, then position inside the paragraph). Rejected duties and the injected test claim have nothing to mark.
+ */
+export function highlightTargets(real: Obligation[], paragraphs: { id: string }[]): DocHighlight[] {
+  const order = new Map(paragraphs.map((p, i) => [p.id, i]));
+  return real
+    .filter((o) => o.status !== "rejected" && !o.injected_test && o.match_span && order.has(o.match_span.paragraph))
+    .map((o) => ({ obligation: o, paragraph: o.match_span!.paragraph, start: o.match_span!.para_start, end: o.match_span!.para_end }))
+    .sort((a, b) => order.get(a.paragraph)! - order.get(b.paragraph)! || a.start - b.start);
+}
+
+export interface Segment {
+  text: string;
+  mark: "active" | "other" | null;
+}
+
+/** Cuts a paragraph into plain and highlighted pieces. Offsets are clamped; a span inside an earlier one is dropped. */
+export function paragraphSegments(text: string, spans: { start: number; end: number; active: boolean }[]): Segment[] {
+  const clamp = (n: number) => Math.max(0, Math.min(n, text.length));
+  const sorted = spans
+    .map((s) => ({ ...s, start: clamp(s.start), end: clamp(s.end) }))
+    .filter((s) => s.end > s.start)
+    .sort((a, b) => a.start - b.start || b.end - a.end);
+  const out: Segment[] = [];
+  let pos = 0;
+  for (const s of sorted) {
+    const start = Math.max(s.start, pos);
+    if (s.end <= start) continue;
+    if (start > pos) out.push({ text: text.slice(pos, start), mark: null });
+    out.push({ text: text.slice(start, s.end), mark: s.active ? "active" : "other" });
+    pos = s.end;
+  }
+  if (pos < text.length) out.push({ text: text.slice(pos), mark: null });
+  return out.length ? out : [{ text, mark: null }];
+}

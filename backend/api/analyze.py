@@ -37,7 +37,7 @@ router = APIRouter()
 
 PING_INTERVAL_S = 10.0  # SSE comment so proxies don't close a quiet connection during a long step
 TOTAL_TIMEOUT_S = 150.0
-CACHE_TTL_S = 30 * 60
+CACHE_TTL_S = 12 * 3600  # the doc's real fetched_at is always shown, so a long-lived cache hides nothing
 
 PROFILE_LABEL = {
     "nbfc": "NBFCs",
@@ -63,6 +63,9 @@ _stage1: TTLCache = TTLCache(maxsize=64, ttl=CACHE_TTL_S)
 _applies: TTLCache = TTLCache(maxsize=256, ttl=CACHE_TTL_S)
 _explainers: TTLCache = TTLCache(maxsize=512, ttl=CACHE_TTL_S)
 _locks: dict[str, list] = {}  # url -> [asyncio.Lock, users]
+
+# Number of user requests (/analyze streams and /ics runs) in progress. The background pre-analysis waits while it is > 0.
+active_requests = 0
 
 
 def clear_caches() -> None:
@@ -208,6 +211,33 @@ async def _retry_step(run: _Run, st: Stage1) -> None:
     run.end(st.details["retry"])
 
 
+async def warm_stage1(url: str) -> bool:
+    """Background pre-analysis: fetch -> extract -> verify -> retry for one URL, stored in the per-URL cache.
+    Profile-independent, so no applicability or explainer. Returns False if it was already cached. Raises DocumentError/LLMError."""
+    async with _UrlLock(url):
+        if _stage1.get(url) is not None:
+            return False
+        run = _Run()  # events are discarded: nobody is listening
+        st = await _stage1_fresh(run, url)
+        _verify_step(run, st, False, False)
+        await _retry_step(run, st)
+        _stage1[url] = st
+        return True
+
+
+def is_cached(url: str) -> bool:
+    return _stage1.get(url) is not None
+
+
+def cached_count() -> int:
+    return len(_stage1)
+
+
+def cached_document(url: str) -> Optional[Doc]:
+    st = _stage1.get(url)
+    return Doc(title=st.doc.title, url=st.doc.url, fetched_at=st.doc.fetched_at, paragraphs=st.doc.paragraphs) if st else None
+
+
 async def _pipeline(run: _Run, url: str, profile: ProfileId, lang: Lang, verifier_test: bool, want_explainer: bool = True) -> None:
     on_wait_var.set(run.waiting)  # this task and the tasks it spawns report Groq rate-limit waits
     async with _UrlLock(url):
@@ -310,11 +340,15 @@ async def _produce(run: _Run, url: str, profile: ProfileId, lang: Lang, verifier
 
 async def run_analysis(url: str, profile: ProfileId, lang: Lang = "en") -> ResultEvent | ErrorEvent:
     """Non-streaming run for /ics: same pipeline and caches as /analyze, minus the explainer. Never raises."""
+    global active_requests
     run = _Run()
+    active_requests += 1
     try:
         await asyncio.wait_for(_produce(run, url.strip(), profile, lang, False, want_explainer=False), TOTAL_TIMEOUT_S)
     except asyncio.TimeoutError:
         return ErrorEvent(step="request", message="This is taking too long, probably because the AI service is busy. Please try again in a minute.", url=url)
+    finally:
+        active_requests -= 1
     final = None
     while not run.queue.empty():
         item = run.queue.get_nowait()
@@ -326,6 +360,7 @@ async def run_analysis(url: str, profile: ProfileId, lang: Lang = "en") -> Resul
 
 
 async def _stream(url: str, profile: str, lang: str, verifier_test: bool):
+    global active_requests
     run = _Run()
     problem = _validate(url, profile, lang)
     if problem:
@@ -336,6 +371,7 @@ async def _stream(url: str, profile: str, lang: str, verifier_test: bool):
     loop = asyncio.get_running_loop()
     deadline = loop.time() + TOTAL_TIMEOUT_S
     task = asyncio.create_task(_produce(run, url.strip(), profile, lang, verifier_test))  # type: ignore[arg-type]
+    active_requests += 1  # the background pre-analysis waits while a user is being served
     try:
         while True:
             remaining = deadline - loop.time()
@@ -357,6 +393,7 @@ async def _stream(url: str, profile: str, lang: str, verifier_test: bool):
                 return
             yield _sse(item)
     finally:
+        active_requests -= 1
         task.cancel()  # client went away or we are done
 
 

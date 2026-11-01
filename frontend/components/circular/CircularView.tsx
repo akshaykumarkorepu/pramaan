@@ -10,16 +10,19 @@ import { ApplicabilityBanner } from "./ApplicabilityBanner";
 import { CircularHeader } from "./CircularHeader";
 import { ExplainerCard } from "./ExplainerCard";
 import { ObligationCard } from "./ObligationCard";
+import { SourcePanel } from "./SourcePanel";
 import { VerifierBar } from "./VerifierBar";
 import { icsUrl } from "@/lib/api";
 import { splitObligations } from "@/lib/circular";
 import { usePrefs } from "@/lib/usePrefs";
 import { useAnalyze } from "@/lib/useAnalyze";
-import type { Lang, ProfileId } from "@/lib/types";
+import type { Lang, Obligation, ProfileId } from "@/lib/types";
 
 export function CircularView({ url, profile, initialLang }: { url: string; profile: ProfileId; initialLang: Lang }) {
   const [lang, setLang] = useState<Lang>(initialLang);
   const [testOn, setTestOn] = useState(false);
+  const [shown, setShown] = useState<Obligation | null>(null); // the duty whose proof the side panel is showing
+  const [panelOpen, setPanelOpen] = useState(false);
   const router = useRouter();
   const { update } = usePrefs();
   const { steps, phase, result, error, totalMs, runId, start } = useAnalyze();
@@ -56,6 +59,10 @@ export function CircularView({ url, profile, initialLang }: { url: string; profi
   }, [testOn, phase]);
 
   const { real, test } = useMemo(() => splitObligations(result?.obligations ?? []), [result]);
+  const showInDocument = useCallback((o: Obligation) => {
+    setShown(o);
+    setPanelOpen(true);
+  }, []);
   const hasDeadlines = real.some((o) => o.status !== "rejected" && !!o.deadline);
   const stale = running && !!result; // an older result is still on screen while a re-run streams
   const explainerLoading = running && (!result || result.explainer.lang !== lang || steps.explain.status !== "done");
@@ -65,6 +72,7 @@ export function CircularView({ url, profile, initialLang }: { url: string; profi
       <FadeIn>
         <CircularHeader
           title={result?.doc.title ?? null}
+          fetchedAt={result?.doc.fetched_at ?? null}
           url={url}
           profile={profile}
           lang={lang}
@@ -94,19 +102,21 @@ export function CircularView({ url, profile, initialLang }: { url: string; profi
                   No verified duties were found in this notice. It may be informational only — open the original to read it.
                 </div>
               ) : (
-                real.map((o, i) => <ObligationCard key={`${o.quote}-${i}`} o={o} doc={result.doc} index={i} openProof={i === 0} />)
+                real.map((o, i) => <ObligationCard key={`${o.quote}-${i}`} o={o} doc={result.doc} index={i} openProof={i === 0} onShow={() => showInDocument(o)} />)
               )}
               {test && (
                 <div ref={testRef} className="space-y-3 pt-2">
                   <p className="rounded-xl bg-slate-900 px-4 py-2.5 text-[13px] text-white">
                     We inserted a fabricated duty to show the checker catches it.
                   </p>
-                  <ObligationCard key={`test-${runId}`} o={test} doc={result.doc} index={0} openProof />
+                  <ObligationCard key={`test-${runId}`} o={test} doc={result.doc} index={0} openProof onShow={() => showInDocument(test)} />
                 </div>
               )}
             </section>
 
             <ExplainerCard explainer={explainerLoading ? null : result.explainer} loading={explainerLoading} />
+
+            <SourcePanel open={panelOpen} onOpenChange={setPanelOpen} doc={result.doc} real={real} active={shown} onActive={setShown} />
 
             <ActionsBar hasDeadlines={hasDeadlines} icsHref={icsUrl(url, profile)} onTest={runTest} testing={running} testOn={testOn} />
           </div>

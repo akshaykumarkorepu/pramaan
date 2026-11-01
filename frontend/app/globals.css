@@ -61,6 +61,7 @@
   --animate-indeterminate: indeterminate 1.4s ease-in-out infinite;
   --animate-shake: shake 0.5s ease-in-out 1;
   --animate-flash: flash 0.9s ease-out 1;
+  --animate-pulse-mark: pulse-mark 1.4s ease-in-out 3;
 
   @keyframes shimmer {
     100% { transform: translateX(100%); }
@@ -79,6 +80,10 @@
   @keyframes flash {
     0% { opacity: 0.55; }
     100% { opacity: 0; }
+  }
+  @keyframes pulse-mark {
+    0%, 100% { box-shadow: 0 0 0 0 rgb(250 204 21 / 0); }
+    50% { box-shadow: 0 0 0 6px rgb(250 204 21 / 0.45); }
   }
   @keyframes indeterminate {
     0% { transform: translateX(-100%); }

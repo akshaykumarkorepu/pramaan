@@ -8,12 +8,14 @@ import { LangText } from "@/components/LangText";
 import { ShimmerSkeleton } from "@/components/motion/ShimmerSkeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { sourceFromUrl } from "@/lib/circular";
+import { ago, useNow } from "@/lib/time";
 import { LANGS, PROFILES, isLang } from "@/lib/profile";
 import type { Lang, ProfileId } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export function CircularHeader({
   title,
+  fetchedAt,
   url,
   profile,
   lang,
@@ -21,12 +23,14 @@ export function CircularHeader({
   onAnother,
 }: {
   title: string | null;
+  fetchedAt: string | null; // when the server really read the document; shown so a cached result never looks fresher than it is
   url: string;
   profile: ProfileId;
   lang: Lang;
   onLang: (l: Lang) => void;
   onAnother: (url: string) => void;
 }) {
+  const now = useNow();
   const src = sourceFromUrl(url);
   const p = PROFILES.find((x) => x.id === profile);
   return (
@@ -44,6 +48,7 @@ export function CircularHeader({
         <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-md px-1 text-xs font-medium text-brand hover:underline">
           Open original <ExternalLink className="size-3" aria-hidden />
         </a>
+        {fetchedAt && <span className="text-xs text-slate-500">· {ago(fetchedAt, now)}</span>}
       </div>
       {title ? (
         <h1 className="mt-3 text-balance text-2xl font-bold leading-tight text-slate-900 sm:text-3xl">{title}</h1>

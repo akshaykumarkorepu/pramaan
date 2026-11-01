@@ -50,7 +50,8 @@ backend/  Python 3.11, FastAPI, uvicorn, httpx, feedparser, selectolax, pdfplumb
           Modules: sources/ pipeline/ verify/ llm/ (prompts in llm/prompts/*.md) api/ eval/ scripts/
 frontend/ Next.js (App Router, TypeScript), Tailwind, shadcn/ui, lucide-react.
           API client in lib/api.ts. Browser calls the backend directly (not via Next API routes) so SSE streams work.
-No database. In-memory TTL cache, 30 min (cachetools). User profile in browser localStorage.
+No database. In-memory TTL caches (cachetools): analysis + applicability + explainer 12 h, notices 10 min, /tts 30 min.
+A background warmer pre-analyses this week's notices one at a time, paced under Groq's per-minute limit and paused while any user request runs. User profile in browser localStorage.
 Deploy: backend on Render (Render is connected to Claude Code), frontend on Vercel.
 
 ## API contract
@@ -73,6 +74,8 @@ GET /analyze?url=&profile=&lang=&verifier_test=0|1
         or, instead of result on failure: {"type":"error","step","message","url"}  (message is user-readable)
         extraction model (internal) also has optional penalty_or_consequence; not returned by the API
 GET /tts?text=&lang=                          -> audio/mpeg (gTTS; max 1200 chars -> 400 JSON {error}; gTTS down -> 503 JSON; cached 30 min)
+GET /warm/status                              -> {running, queued, cached_count, last_run_at} (background pre-analysis; read-only)
+GET /doc?url=                                 -> {title,url,fetched_at,paragraphs} of an already analysed document, from cache only (404 if not cached)
 GET /ics?url=&profile=                        -> text/calendar: one all-day event per verified/near/fixed obligation with a deadline; header X-Pramaan-Events: <n>
                                                  (0 -> valid empty calendar); filename pramaan-<source>-<id>.ics; reuses the cached /analyze result
 Paragraph id = the document's own numbering ("2", "2.1", "3.1(a)"), else "p<index>"; numbering also stays in text.
@@ -84,6 +87,6 @@ Languages: en, te, hi
   Never return a traceback to the client.
 - SSE responses set Cache-Control: no-cache and X-Accel-Buffering: no.
 - CORS allows only ALLOWED_ORIGIN.
-- Before saying a task is done: backend -> `pytest -q` passes; frontend -> `npm run build` passes.
+- Before saying a task is done: backend -> `pytest -q` passes (live tests are excluded; run them alone with `pytest -m live`); frontend -> `npm run build` passes.
 - Explain non-obvious code with short comments; both teammates must explain all code to judges.
 - Feature freeze: Sun 1 Nov, 3:30 PM IST. After that, fixes and docs only.
