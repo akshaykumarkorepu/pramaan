@@ -58,6 +58,24 @@ export interface WarmStatus {
   last_run_at: string | null;
 }
 
+// ---------- /stats ----------
+export interface StatsBlock {
+  circulars_analysed: number;
+  duties_extracted: number;
+  verified: number;
+  near: number;
+  fixed: number;
+  rejected: number;
+  injected_tests_run: number;
+  injected_tests_caught: number;
+  avg_latency_ms_fresh: number | null;
+  avg_latency_ms_cached: number | null;
+}
+export interface StatsResponse extends StatsBlock {
+  started_at: string;
+  by_source: Record<SourceId, StatsBlock>;
+}
+
 // ---------- /analyze (SSE) ----------
 export interface Paragraph {
   id: string;

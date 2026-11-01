@@ -27,6 +27,7 @@ from pipeline.extract import extract
 from pipeline.fake_claim import make_fake_claim
 from pipeline.fetch_document import FetchedDocument, fetch_document
 from pipeline.models import ExtractionResult
+from pipeline import stats
 from pipeline.retry import retry
 from sources.allowlist import check_allowed, source_of
 from sources.errors import DocumentError
@@ -72,6 +73,7 @@ def clear_caches() -> None:
     for c in (_stage1, _applies, _explainers):
         c.clear()
     _locks.clear()
+    stats.reset()
 
 
 class _UrlLock:
@@ -195,6 +197,7 @@ def _verify_step(run: _Run, st: Stage1, verifier_test: bool, cached: bool) -> Op
     injected = None
     if verifier_test:
         injected = verify([make_fake_claim(source_of(st.doc.url), st.doc)], st.doc)[0][0]  # pure code, no LLM, so it is always run live
+        stats.record_injected(st.doc.url, injected.status)
         detail += f" (cached); test claim {injected.status} live" if cached else f"; test claim {injected.status} live"
         run.end(detail)
     else:
@@ -218,10 +221,12 @@ async def warm_stage1(url: str) -> bool:
         if _stage1.get(url) is not None:
             return False
         run = _Run()  # events are discarded: nobody is listening
+        t0 = time.perf_counter()
         st = await _stage1_fresh(run, url)
         _verify_step(run, st, False, False)
         await _retry_step(run, st)
         _stage1[url] = st
+        stats.record_analysis(url, st.obligations, int((time.perf_counter() - t0) * 1000))
         return True
 
 
@@ -241,6 +246,7 @@ def cached_document(url: str) -> Optional[Doc]:
 async def _pipeline(run: _Run, url: str, profile: ProfileId, lang: Lang, verifier_test: bool, want_explainer: bool = True) -> None:
     on_wait_var.set(run.waiting)  # this task and the tasks it spawns report Groq rate-limit waits
     async with _UrlLock(url):
+        t0 = time.perf_counter()
         st = _stage1.get(url)
         cached = st is not None
         request_llm_ms = 0
@@ -259,6 +265,7 @@ async def _pipeline(run: _Run, url: str, profile: ProfileId, lang: Lang, verifie
             await _retry_step(run, st)
             request_llm_ms += st.llm_ms - before_retry
             _stage1[url] = st
+            stats.record_analysis(url, st.obligations, int((time.perf_counter() - t0) * 1000))  # fetch -> retry, before applicability
 
         # applicability
         key = (url, profile)
@@ -302,6 +309,8 @@ async def _pipeline(run: _Run, url: str, profile: ProfileId, lang: Lang, verifie
                 if explainer.source == "llm":  # a template fallback is retried next time instead of being pinned
                     _explainers[ekey] = explainer
 
+    if cached:
+        stats.record_cached(url, int((time.perf_counter() - t0) * 1000))  # whole request served from the cache
     obligations = list(st.obligations) + ([injected] if injected else [])
     counts = Counts(
         verified=sum(o.status in ("verified", "near") for o in st.obligations),

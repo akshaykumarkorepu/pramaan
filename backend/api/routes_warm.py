@@ -3,7 +3,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from api import analyze
-from pipeline import warmer
+from pipeline import stats, warmer
 from sources.allowlist import check_allowed
 from sources.errors import DocumentError
 
@@ -18,6 +18,12 @@ async def warm_status():
         "cached_count": analyze.cached_count(),
         "last_run_at": warmer.state.last_run_at.isoformat().replace("+00:00", "Z") if warmer.state.last_run_at else None,
     }
+
+
+@router.get("/stats")
+async def proof_stats():
+    """Live grounding numbers over everything analysed since the server started (in memory, no LLM)."""
+    return stats.snapshot()
 
 
 @router.get("/doc")

@@ -6,6 +6,7 @@ import type {
   NoticesResponse,
   ProfileId,
   ResultEvent,
+  StatsResponse,
   StepEvent,
   WarmStatus,
   Doc,
@@ -79,6 +80,10 @@ export function getNotices(
 
 export function getWarmStatus(signal?: AbortSignal): Promise<WarmStatus> {
   return fetchJson<WarmStatus>("/warm/status", 10_000, signal);
+}
+
+export function getStats(signal?: AbortSignal): Promise<StatsResponse> {
+  return fetchJson<StatsResponse>("/stats", 10_000, signal);
 }
 
 /** The official text of an already analysed notice, from the server's cache (never re-analyses). */

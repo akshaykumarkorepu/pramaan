@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { ArrowRight, BadgeCheck, Calculator, EyeOff, ExternalLink, FileWarning, Quote, RefreshCcw, ShieldAlert, type LucideIcon } from "lucide-react";
+import { ArrowRight, BadgeCheck, Calculator, EyeOff, ExternalLink, FileWarning, Quote, RefreshCcw, type LucideIcon } from "lucide-react";
 import { Stagger, StaggerItem } from "@/components/motion/Stagger";
 import { FadeIn } from "@/components/motion/FadeIn";
 import { buttonVariants } from "@/components/ui/button";
 import { SOURCE_STYLE } from "@/components/status";
+import { ProofStatsCard } from "@/components/ProofStats";
 import { cn } from "@/lib/utils";
 
 /** Section wrapper with a heading that fades in on scroll. */
@@ -93,14 +94,7 @@ export function BuiltWith() {
 
 /** Placeholder only: no figures until the live evaluation endpoint is wired in a later milestone. */
 export function Evidence() {
-  return (
-    <div className="rounded-2xl border border-dashed border-slate-300 bg-white/70 p-6 sm:p-8">
-      <span className="flex size-10 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
-        <ShieldAlert className="size-5" aria-hidden />
-      </span>
-      <p className="mt-4 text-base font-semibold text-slate-900">Accuracy results load here from the live evaluation endpoint</p>
-    </div>
-  );
+  return <ProofStatsCard />;
 }
 
 const LIMITS = [

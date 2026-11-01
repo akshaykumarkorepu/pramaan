@@ -32,3 +32,12 @@ export function formatDate(iso: string | null): string {
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
+
+/** ISO timestamp -> "since 3:42 pm" (today) or "since 1 Nov, 3:42 pm". */
+export function sinceLabel(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const time = d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
+  const sameDay = d.toDateString() === new Date().toDateString();
+  return `since ${sameDay ? time : `${d.toLocaleDateString("en-IN", { day: "numeric", month: "short" })}, ${time}`}`;
+}

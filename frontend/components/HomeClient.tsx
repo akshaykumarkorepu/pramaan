@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ControlPanel } from "@/components/ControlPanel";
 import { Hero } from "@/components/Hero";
 import { LiveStatus } from "@/components/LiveStatus";
+import { ProofStatsLine } from "@/components/ProofStats";
 import { PasteLink } from "@/components/PasteLink";
 import { NoticesSection } from "@/components/NoticesSection";
 import { usePrefs } from "@/lib/usePrefs";
@@ -55,6 +56,7 @@ export function HomeClient() {
           check();
         }}
       />
+      <ProofStatsLine />
       <ControlPanel
         profile={prefs.profile}
         lang={prefs.lang}
